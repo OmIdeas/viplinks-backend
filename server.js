@@ -1,4 +1,3 @@
-javascript// VipLinks Backend API
 // Node.js + Express + Supabase
 
 const express = require('express');
@@ -35,3 +34,4 @@ app.get('/api/health', (req, res) => {
 app.listen(PORT, () => {
     console.log(`VipLinks API corriendo en puerto ${PORT}`);
 });
+
