@@ -1,32 +1,16 @@
-// VipLinks Backend API
-// Node.js + Express + Supabase
-const express = require('express');
-const cors = require('cors');
-const { createClient } = require('@supabase/supabase-js');
-const mercadopago = require('mercadopago');
+import express from 'express';
+import { createClient } from '@supabase/supabase-js';
+
 const app = express();
-
-// Middleware
-app.use(cors());
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
-// Configuracion
-const PORT = process.env.PORT || 3000;
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_KEY;
-const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
+// Usa SUPABASE_ANON_KEY si existe, y en su defecto SUPABASE_KEY.
+// Así no dependes de un único nombre de variable.
+const supabaseAnon = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY;
+const supabaseUrl = process.env.SUPABASE_URL;
 
-// Inicializar clientes
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-mercadopago.configure({ access_token: MP_ACCESS_TOKEN });
-
-// Health check
-app.get('/api/health', (req, res) => {
-    res.json({ 
-        status: 'OK', 
-        timestamp: new Date().toISOString()
-    });
+const supabase = createClient(supabaseUrl, supabaseAnon, {
+  auth: { persistSession: false, autoRefreshToken: false }
 });
 
 // ============= RUTAS DE AUTENTICACIÓN =============
@@ -35,7 +19,6 @@ app.get('/api/health', (req, res) => {
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { email, password, username } = req.body;
-    
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -46,7 +29,6 @@ app.post('/api/auth/register', async (req, res) => {
         }
       }
     });
-    
     if (error) throw error;
     res.json({ success: true, user: data.user });
   } catch (error) {
@@ -58,17 +40,12 @@ app.post('/api/auth/register', async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password
-    });
-    
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       user: data.user,
-      session: data.session 
+      session: data.session
     });
   } catch (error) {
     res.status(401).json({ success: false, error: error.message });
@@ -80,9 +57,7 @@ app.get('/api/auth/me', async (req, res) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '');
     if (!token) throw new Error('No token provided');
-    
     const { data: { user }, error } = await supabase.auth.getUser(token);
-    
     if (error) throw error;
     res.json({ success: true, user });
   } catch (error) {
@@ -91,19 +66,12 @@ app.get('/api/auth/me', async (req, res) => {
 });
 
 // Logout
-app.post('/api/auth/logout', async (req, res) => {
-  try {
-    const token = req.headers.authorization?.replace('Bearer ', '');
-    const { error } = await supabase.auth.signOut(token);
-    
-    if (error) throw error;
-    res.json({ success: true });
-  } catch (error) {
-    res.status(400).json({ success: false, error: error.message });
-  }
+app.post('/api/auth/logout', async (_req, res) => {
+  // Supabase v2 no requiere (ni acepta) el token aquí. Basta con que el cliente elimine su token.
+  res.json({ success: true });
 });
 
-// Iniciar servidor
-app.listen(PORT, () => {
-    console.log(`VipLinks API corriendo en puerto ${PORT}`);
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(`API running on :${port}`);
 });
