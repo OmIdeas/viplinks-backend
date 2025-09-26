@@ -383,7 +383,67 @@ app.post('/api/sales', async (req, res) => {
     res.status(400).json({ success: false, error: error.message });
   }
 });
+
+// Helper function para obtener usuario autenticado y su profile
+async function getAuthenticatedUser(req) {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) throw new Error('No token provided');
+  
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error) throw error;
+  
+  // CAMBIO: Primero intentar obtener el profile del usuario
+  let profile_id = null;
+  
+  try {
+    // Opción 1: Si profiles tiene campo user_id
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('user_id', user.id)
+      .single();
+      
+    if (!profileError && profile) {
+      profile_id = profile.id;
+    }
+  } catch (e) {
+    // Opción 2: Si no existe el campo user_id, usar email como referencia
+    try {
+      const { data: profile, error: profileError2 } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', user.email)
+        .single();
+        
+      if (!profileError2 && profile) {
+        profile_id = profile.id;
+      }
+    } catch (e2) {
+      // Opción 3: Si no existe ningún profile, crear uno
+      const { data: newProfile, error: createError } = await supabase
+        .from('profiles')
+        .insert([{
+          user_id: user.id,
+          email: user.email,
+          username: user.user_metadata?.username || user.email.split('@')[0]
+        }])
+        .select('id')
+        .single();
+        
+      if (!createError && newProfile) {
+        profile_id = newProfile.id;
+      }
+    }
+  }
+  
+  if (!profile_id) {
+    throw new Error('Profile not found and could not be created');
+  }
+  return { user, profile_id };
+}
+
 app.listen(PORT, () => {
   console.log(`VipLinks API running on port ${PORT}`);
 });
+
 
