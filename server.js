@@ -35,7 +35,7 @@ app.get('/api/health', (req, res) => {
 
 // ================= AUTENTICACIÓN CORREGIDA =================
 
-// Registro - CORREGIDO para usar tabla users personalizada
+// Registro - CORREGIDO con auto-creación de profile
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { email, password, username, full_name, name, display_name } = req.body;
@@ -91,6 +91,22 @@ app.post('/api/auth/register', async (req, res) => {
     if (insertError) {
       console.error('Insert error:', insertError);
       throw new Error('Failed to create user: ' + insertError.message);
+    }
+
+    // Crear profile automáticamente
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .insert([{
+        id: newUser.id,
+        email: newUser.email,
+        username: newUser.username,
+        full_name: newUser.full_name,
+        plan: 'free',
+        role: 'user'
+      }]);
+
+    if (profileError) {
+      console.warn('Profile creation failed, but user was created:', profileError);
     }
 
     // Generar JWT token
@@ -232,7 +248,7 @@ app.post('/api/auth/logout', async (req, res) => {
   }
 });
 
-// Helper function para obtener usuario autenticado - ACTUALIZADA
+// Helper function para obtener usuario autenticado - MEJORADA
 async function getAuthenticatedUser(req) {
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) throw new Error('No token provided');
@@ -247,55 +263,36 @@ async function getAuthenticatedUser(req) {
     
   if (error || !user) throw new Error('Invalid token');
   
-  // Intentar obtener o crear el profile del usuario
-  let profile_id = null;
-  
-  try {
-    // Opción 1: Si profiles tiene campo user_id
-    const { data: profile, error: profileError } = await supabase
+  // Buscar profile por ID (que debería coincidir con user.id)
+  const { data: profile, error: profileError } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('id', user.id)
+    .single();
+    
+  if (profileError || !profile) {
+    // Si no existe profile, crear uno automáticamente
+    const { data: newProfile, error: createError } = await supabase
       .from('profiles')
+      .insert([{
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        full_name: user.full_name,
+        plan: 'free',
+        role: 'user'
+      }])
       .select('id')
-      .eq('user_id', user.id)
       .single();
       
-    if (!profileError && profile) {
-      profile_id = profile.id;
+    if (createError) {
+      throw new Error('Profile not found and could not be created: ' + createError.message);
     }
-  } catch (e) {
-    // Opción 2: Si no existe el campo user_id, usar email como referencia
-    try {
-      const { data: profile, error: profileError2 } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('email', user.email)
-        .single();
-        
-      if (!profileError2 && profile) {
-        profile_id = profile.id;
-      }
-    } catch (e2) {
-      // Opción 3: Si no existe ningún profile, crear uno
-      const { data: newProfile, error: createError } = await supabase
-        .from('profiles')
-        .insert([{
-          user_id: user.id,
-          email: user.email,
-          username: user.username || user.email.split('@')[0]
-        }])
-        .select('id')
-        .single();
-        
-      if (!createError && newProfile) {
-        profile_id = newProfile.id;
-      }
-    }
+    
+    return { user, profile_id: newProfile.id };
   }
   
-  if (!profile_id) {
-    throw new Error('Profile not found and could not be created');
-  }
-  
-  return { user, profile_id };
+  return { user, profile_id: profile.id };
 }
 
 // ================= PRODUCTOS ================= 
