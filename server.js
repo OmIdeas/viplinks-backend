@@ -1,5 +1,7 @@
 import express from 'express';
 import cors from 'cors';
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 import { createClient } from '@supabase/supabase-js';
 
 const app = express();
@@ -20,6 +22,9 @@ const supabase = createClient(supabaseUrl, supabaseAnon, {
   auth: { persistSession: false, autoRefreshToken: false }
 });
 
+// JWT Secret
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this';
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ 
@@ -28,77 +33,221 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Registro
+// ================= AUTENTICACIÓN CORREGIDA =================
+
+// Registro - CORREGIDO para usar tabla users personalizada
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { email, password, username } = req.body;
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          username: username || email.split('@')[0],
-          plan: 'free'
-        }
-      }
+    const { email, password, username, full_name, name, display_name } = req.body;
+    
+    // Validaciones básicas
+    if (!email || !password) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Email and password are required' 
+      });
+    }
+    
+    if (password.length < 8) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Password must be at least 8 characters' 
+      });
+    }
+
+    // Verificar si el email ya existe
+    const { data: existingUser, error: checkError } = await supabase
+      .from('users')
+      .select('email')
+      .eq('email', email)
+      .single();
+
+    if (existingUser) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Email already registered' 
+      });
+    }
+
+    // Hash de la contraseña
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+    // Crear usuario en tabla personalizada
+    const { data: newUser, error: insertError } = await supabase
+      .from('users')
+      .insert([{
+        email,
+        password: hashedPassword,
+        username: username || email.split('@')[0],
+        full_name: full_name || name || display_name || username,
+        name: name || username,
+        display_name: display_name || username,
+        role: 'user'
+      }])
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error('Insert error:', insertError);
+      throw new Error('Failed to create user: ' + insertError.message);
+    }
+
+    // Generar JWT token
+    const token = jwt.sign(
+      { 
+        id: newUser.id, 
+        email: newUser.email, 
+        username: newUser.username 
+      },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    // Respuesta exitosa (sin devolver password hasheado)
+    const { password: _, ...userResponse } = newUser;
+    
+    res.json({ 
+      success: true, 
+      user: userResponse,
+      token 
     });
-    if (error) throw error;
-    res.json({ success: true, user: data.user });
+
   } catch (error) {
-    res.status(400).json({ success: false, error: error.message });
+    console.error('Registration error:', error);
+    res.status(400).json({ 
+      success: false, 
+      error: error.message || 'Registration failed' 
+    });
   }
 });
 
-// Login
+// Login - CORREGIDO para usar tabla users personalizada
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
+
+    if (!email || !password) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Email and password are required' 
+      });
+    }
+
+    // Buscar usuario en tabla personalizada
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .single();
+
+    if (userError || !user) {
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Invalid credentials' 
+      });
+    }
+
+    // Verificar contraseña
+    const passwordMatch = await bcrypt.compare(password, user.password);
+    
+    if (!passwordMatch) {
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Invalid credentials' 
+      });
+    }
+
+    // Generar JWT token
+    const token = jwt.sign(
+      { 
+        id: user.id, 
+        email: user.email, 
+        username: user.username 
+      },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    // Respuesta exitosa (sin devolver password)
+    const { password: _, ...userResponse } = user;
+    
     res.json({
       success: true,
-      user: data.user,
-      session: data.session
+      user: userResponse,
+      token
     });
+
   } catch (error) {
-    res.status(401).json({ success: false, error: error.message });
+    console.error('Login error:', error);
+    res.status(401).json({ 
+      success: false, 
+      error: error.message || 'Login failed' 
+    });
   }
 });
 
-// Obtener usuario actual
+// Obtener usuario actual - CORREGIDO
 app.get('/api/auth/me', async (req, res) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '');
-    if (!token) throw new Error('No token provided');
-    const { data: { user }, error } = await supabase.auth.getUser(token);
-    if (error) throw error;
+    if (!token) {
+      return res.status(401).json({ 
+        success: false, 
+        error: 'No token provided' 
+      });
+    }
+
+    const decoded = jwt.verify(token, JWT_SECRET);
+    
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('id, email, username, full_name, name, display_name, role, created_at')
+      .eq('id', decoded.id)
+      .single();
+
+    if (error || !user) {
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Invalid token' 
+      });
+    }
+
     res.json({ success: true, user });
   } catch (error) {
-    res.status(401).json({ success: false, error: error.message });
+    res.status(401).json({ 
+      success: false, 
+      error: 'Invalid token' 
+    });
   }
 });
 
 // Logout
 app.post('/api/auth/logout', async (req, res) => {
   try {
-    const token = req.headers.authorization?.replace('Bearer ', '');
-    const { error } = await supabase.auth.signOut(token);
-    if (error) throw error;
-    res.json({ success: true });
+    // Con JWT no necesitamos invalidar en servidor, solo en cliente
+    res.json({ success: true, message: 'Logged out successfully' });
   } catch (error) {
     res.status(400).json({ success: false, error: error.message });
   }
 });
 
-// Helper function para obtener usuario autenticado y su profile
+// Helper function para obtener usuario autenticado - ACTUALIZADA
 async function getAuthenticatedUser(req) {
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) throw new Error('No token provided');
   
-  const { data: { user }, error } = await supabase.auth.getUser(token);
-  if (error) throw error;
+  const decoded = jwt.verify(token, JWT_SECRET);
   
-  // Intentar obtener el profile del usuario
+  const { data: user, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', decoded.id)
+    .single();
+    
+  if (error || !user) throw new Error('Invalid token');
+  
+  // Intentar obtener o crear el profile del usuario
   let profile_id = null;
   
   try {
@@ -131,7 +280,7 @@ async function getAuthenticatedUser(req) {
         .insert([{
           user_id: user.id,
           email: user.email,
-          username: user.user_metadata?.username || user.email.split('@')[0]
+          username: user.username || user.email.split('@')[0]
         }])
         .select('id')
         .single();
