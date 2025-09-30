@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
 import { createClient } from '@supabase/supabase-js';
+import nodemailer from 'nodemailer';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -26,6 +27,17 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRole);
 
 // ===== JWT propio de tu app =====
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this';
+
+// ===== EMAIL CONFIG =====
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  port: parseInt(process.env.SMTP_PORT || '587'),
+  secure: false,
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS
+  }
+});
 
 // ===== Health =====
 app.get('/api/health', (_req, res) => {
@@ -64,6 +76,66 @@ function signAppJwt(payload) {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
 }
 
+// ===== OTP Functions =====
+function generateOTP() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+async function sendVerificationEmail(email, code) {
+  const mailOptions = {
+    from: process.env.SMTP_USER,
+    to: email,
+    subject: 'VipLinks - Código de Verificación',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #667eea;">Verificación de Cuenta</h2>
+        <p>Tu código de verificación es:</p>
+        <div style="background: #f7fafc; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0;">
+          <h1 style="color: #2d3748; font-size: 32px; letter-spacing: 8px; margin: 0;">${code}</h1>
+        </div>
+        <p>Este código expira en 10 minutos.</p>
+        <p>Si no solicitaste este código, ignora este email.</p>
+      </div>
+    `
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    return true;
+  } catch (error) {
+    console.error('Error sending email:', error);
+    return false;
+  }
+}
+
+async function createVerificationCode(userId, email) {
+  const code = generateOTP();
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+  await supabaseAdmin
+    .from('email_verifications')
+    .delete()
+    .eq('user_id', userId)
+    .eq('verified', false);
+
+  const { data, error } = await supabaseAdmin
+    .from('email_verifications')
+    .insert([{
+      user_id: userId,
+      email,
+      code,
+      expires_at: expiresAt.toISOString()
+    }])
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  await sendVerificationEmail(email, code);
+
+  return data;
+}
+
 async function getAuthenticatedUser(req) {
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) throw new Error('No token provided');
@@ -96,30 +168,123 @@ app.post('/api/auth/register', async (req, res) => {
       role: 'user'
     };
 
-    const { data, error } = await supabase.auth.signUp({
+    const { data, error } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
-      options: { data: meta }
+      email_confirm: false,
+      user_metadata: meta
     });
 
     if (error) {
-      console.error('signUp error ->', {
-        name: error.name, message: error.message, status: error.status,
-        code: error.code, desc: error.error_description
-      });
+      console.error('createUser error:', error);
       return res.status(400).json({
         success: false,
-        error: error.message || 'Registration failed',
-        code: error.code || null
+        error: error.message || 'Registration failed'
       });
     }
 
-    if (data?.user) { try { await ensureProfile(data.user); } catch (e) { console.warn('ensureProfile:', e.message); } }
+    if (data?.user) {
+      await ensureProfile(data.user);
+      await createVerificationCode(data.user.id, email);
 
-    // No devolvemos token en registro: primero debe confirmar el correo
-    return res.json({ success: true, message: 'Revisa tu correo para confirmar la cuenta.' });
+      return res.json({
+        success: true,
+        message: 'Código enviado a tu email',
+        requiresVerification: true,
+        userId: data.user.id
+      });
+    }
+
+    return res.status(400).json({ success: false, error: 'Registration failed' });
   } catch (e) {
     return res.status(400).json({ success: false, error: e.message || 'Registration failed' });
+  }
+});
+
+// VERIFICAR CÓDIGO
+app.post('/api/auth/verify-code', async (req, res) => {
+  try {
+    const { email, code } = req.body;
+
+    if (!email || !code) {
+      return res.status(400).json({ success: false, error: 'Email and code are required' });
+    }
+
+    const { data: verification, error: verifyError } = await supabaseAdmin
+      .from('email_verifications')
+      .select('*')
+      .eq('email', email)
+      .eq('code', code)
+      .eq('verified', false)
+      .gt('expires_at', new Date().toISOString())
+      .maybeSingle();
+
+    if (verifyError || !verification) {
+      return res.status(400).json({ success: false, error: 'Código inválido o expirado' });
+    }
+
+    await supabaseAdmin
+      .from('email_verifications')
+      .update({ verified: true })
+      .eq('id', verification.id);
+
+    const { error: confirmError } = await supabaseAdmin.auth.admin.updateUserById(
+      verification.user_id,
+      { email_confirm: true }
+    );
+
+    if (confirmError) {
+      return res.status(400).json({ success: false, error: 'Error confirmando cuenta' });
+    }
+
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('*')
+      .eq('id', verification.user_id)
+      .single();
+
+    const token = signAppJwt({
+      id: profile.id,
+      email: profile.email,
+      username: profile.username
+    });
+
+    return res.json({
+      success: true,
+      message: 'Cuenta verificada exitosamente',
+      user: profile,
+      token
+    });
+  } catch (e) {
+    return res.status(400).json({ success: false, error: e.message });
+  }
+});
+
+// REENVIAR CÓDIGO
+app.post('/api/auth/resend-code', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ success: false, error: 'Email is required' });
+    }
+
+    const { data: { users }, error } = await supabaseAdmin.auth.admin.listUsers();
+    const user = users?.find(u => u.email === email);
+
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    if (user.email_confirmed_at) {
+      return res.status(400).json({ success: false, error: 'Email already verified' });
+    }
+
+    await createVerificationCode(user.id, email);
+
+    return res.json({ success: true, message: 'Código reenviado' });
+  } catch (e) {
+    return res.status(400).json({ success: false, error: e.message });
   }
 });
 
@@ -135,16 +300,23 @@ app.post('/api/auth/login', async (req, res) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
-      const msg = (error.message || '').toLowerCase();
-      if (msg.includes('email not confirmed')) {
-        return res.status(403).json({ success: false, error: 'EMAIL_NOT_CONFIRMED' });
-      }
       return res.status(401).json({ success: false, error: 'Invalid credentials' });
     }
 
     const user = data.user;
-    const profile = await ensureProfile(user);
 
+    if (!user.email_confirmed_at) {
+      await createVerificationCode(user.id, email);
+      
+      return res.json({
+        success: false,
+        requiresVerification: true,
+        message: 'Código enviado a tu email',
+        userId: user.id
+      });
+    }
+
+    const profile = await ensureProfile(user);
     const token = signAppJwt({ id: profile.id, email: profile.email, username: profile.username });
 
     return res.json({ success: true, user: profile, token });
