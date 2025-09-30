@@ -160,7 +160,7 @@ app.get('/api/auth/me', async (req, res) => {
     const { data: prof } = await supabaseAdmin
       .from('profiles')
       .select('id,email,username,full_name,plan,role,created_at')
-      .eq('id', sess.id)
+      .eq('id', sess.profile_id)
       .maybeSingle();
 
     return res.json({ success: true, user: prof || sess.user });
@@ -215,13 +215,22 @@ app.post('/api/products', async (req, res) => {
       seller_id: profile_id,
       name: req.body.name,
       description: req.body.description,
-      price: req.body.price,
-      type: req.body.category,
-      category: req.body.category,
-      delivery_method: req.body.deliveryMethod || 'email',
-      delivery_config: req.body.deliveryConfig || {},
-      image_url: req.body.image_url,
-      status: 'active'
+      price: parseFloat(req.body.price),
+      type: req.body.category || 'gaming',
+      category: req.body.category || 'gaming',
+      delivery_method: 'rcon',
+      image_url: req.body.image || null,
+      status: req.body.status || 'active',
+      
+      // Campos gaming específicos
+      product_type: req.body.type,
+      duration: req.body.duration,
+      server_config: req.body.server || null,
+      delivery_commands: req.body.commands || null,
+      payment_methods: req.body.payment_methods || null,
+      visibility: 'private',
+      views: 0,
+      sales_count: 0
     };
 
     const { data: product, error } = await supabaseAdmin
@@ -234,6 +243,7 @@ app.post('/api/products', async (req, res) => {
 
     res.json({ success: true, product });
   } catch (error) {
+    console.error('Error creating product:', error);
     res.status(400).json({ success: false, error: error.message });
   }
 });
