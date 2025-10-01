@@ -30,12 +30,12 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this';
 
 // ===== EMAIL CONFIG =====
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.SMTP_PORT || '587'),
+  host: 'smtp.mailgun.org',
+  port: 587,
   secure: false,
   auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS
+    user: process.env.MAILGUN_SMTP_USER,
+    pass: process.env.MAILGUN_SMTP_PASS
   }
 });
 
@@ -83,7 +83,7 @@ function generateOTP() {
 
 async function sendVerificationEmail(email, code) {
   const mailOptions = {
-    from: process.env.SMTP_USER,
+    from: 'VipLinks <postmaster@sandbox3d103bab6c944d8eb6b88e76347f955a.mailgun.org>',
     to: email,
     subject: 'VipLinks - Código de Verificación',
     html: `
