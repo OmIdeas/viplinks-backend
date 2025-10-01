@@ -109,12 +109,7 @@ async function sendVerificationEmail(email, code) {
 }
 
 async function createVerificationCode(userId, email) {
-  const code = generateOTP();
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-
   // VERIFICAR último código enviado
-async function createVerificationCode(userId, email) {
-  // VERIFICAR último código enviado (AGREGAR ESTO)
   const { data: lastCode } = await supabaseAdmin
     .from('email_verifications')
     .select('created_at')
@@ -129,6 +124,10 @@ async function createVerificationCode(userId, email) {
       throw new Error('Esperá un momento antes de solicitar otro código');
     }
   }
+
+  const code = generateOTP();
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
   await supabaseAdmin
     .from('email_verifications')
     .delete()
@@ -604,5 +603,3 @@ app.post('/api/sales', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`VipLinks API running on port ${PORT}`);
 });
-
-
