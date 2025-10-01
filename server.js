@@ -112,6 +112,22 @@ async function createVerificationCode(userId, email) {
   const code = generateOTP();
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
+  // VERIFICAR último código enviado
+  const { data: lastCode } = await supabaseAdmin
+    .from('email_verifications')
+    .select('created_at')
+    .eq('email', email)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (lastCode) {
+    const timeSinceLastEmail = Date.now() - new Date(lastCode.created_at).getTime();
+    if (timeSinceLastEmail < 60000) { // 60 segundos
+      throw new Error('Esperá un momento antes de solicitar otro código');
+    }
+  }
+
   await supabaseAdmin
     .from('email_verifications')
     .delete()
@@ -587,3 +603,4 @@ app.post('/api/sales', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`VipLinks API running on port ${PORT}`);
 });
+
