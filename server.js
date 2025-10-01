@@ -7,28 +7,23 @@ import nodemailer from 'nodemailer';
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ===== CORS =====
 app.use(cors({
   origin: ['https://app.viplinks.org', 'http://localhost:3000'],
   credentials: true
 }));
 app.use(express.json());
 
-// ===== Supabase clients =====
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseAnon = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY;
 const supabase = createClient(supabaseUrl, supabaseAnon, {
   auth: { persistSession: false, autoRefreshToken: false }
 });
 
-// Admin (Service Role) para perfilar y DB sin pelear con RLS
 const supabaseServiceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRole);
 
-// ===== JWT propio de tu app =====
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this';
 
-// ===== EMAIL CONFIG =====
 const transporter = nodemailer.createTransport({
   host: 'smtp.mailgun.org',
   port: 587,
@@ -39,19 +34,16 @@ const transporter = nodemailer.createTransport({
   }
 });
 
-// ===== Health =====
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
-// ===== Helpers =====
 function makeUsername(email, provided) {
   if (provided && provided.trim()) return provided.trim();
   return (email || '').split('@')[0] || 'user';
 }
 
 async function ensureProfile(user) {
-  // Crea perfil espejo en tu tabla "profiles" si no existe (id = auth.users.id)
   const id = user.id;
   const username = user.user_metadata?.username || makeUsername(user.email);
   const full_name = user.user_metadata?.full_name || username;
@@ -76,7 +68,6 @@ function signAppJwt(payload) {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
 }
 
-// ===== OTP Functions =====
 function generateOTP() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
@@ -101,15 +92,15 @@ async function sendVerificationEmail(email, code) {
 
   try {
     await transporter.sendMail(mailOptions);
+    console.log('✓ Email sent to:', email);
     return true;
   } catch (error) {
-    console.error('Error sending email:', error);
+    console.error('✗ Error sending email:', error);
     return false;
   }
 }
 
 async function createVerificationCode(userId, email) {
-  // VERIFICAR último código enviado
   const { data: lastCode } = await supabaseAdmin
     .from('email_verifications')
     .select('created_at')
@@ -156,16 +147,13 @@ async function getAuthenticatedUser(req) {
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) throw new Error('No token provided');
   try {
-    const decoded = jwt.verify(token, JWT_SECRET); // { id, email, username }
+    const decoded = jwt.verify(token, JWT_SECRET);
     return { user: decoded, profile_id: decoded.id };
   } catch {
     throw new Error('Invalid token');
   }
 }
 
-// ================= AUTENTICACIÓN (con Supabase Auth) =================
-
-// REGISTRO — usa GoTrue; si falla, devuelve 400 y NO emite token
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { email, password, username, full_name, name, display_name } = req.body;
@@ -217,7 +205,6 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-// VERIFICAR CÓDIGO
 app.post('/api/auth/verify-code', async (req, res) => {
   try {
     const { email, code } = req.body;
@@ -276,7 +263,6 @@ app.post('/api/auth/verify-code', async (req, res) => {
   }
 });
 
-// REENVIAR CÓDIGO
 app.post('/api/auth/resend-code', async (req, res) => {
   try {
     const { email } = req.body;
@@ -304,7 +290,6 @@ app.post('/api/auth/resend-code', async (req, res) => {
   }
 });
 
-// LOGIN — requiere email confirmado
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -341,7 +326,6 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// ME — basado en tu JWT propio
 app.get('/api/auth/me', async (req, res) => {
   try {
     const sess = await getAuthenticatedUser(req);
@@ -360,8 +344,6 @@ app.get('/api/auth/me', async (req, res) => {
 app.post('/api/auth/logout', (_req, res) => {
   return res.json({ success: true, message: 'Logged out successfully' });
 });
-
-// ================= PRODUCTOS =================
 
 app.get('/api/products', async (req, res) => {
   try {
@@ -409,8 +391,6 @@ app.post('/api/products', async (req, res) => {
       delivery_method: 'rcon',
       image_url: req.body.image || null,
       status: req.body.status || 'active',
-      
-      // Campos gaming específicos
       product_type: req.body.type,
       duration: req.body.duration,
       server_config: req.body.server || null,
@@ -478,8 +458,6 @@ app.delete('/api/products/:id', async (req, res) => {
     res.status(400).json({ success: false, error: error.message });
   }
 });
-
-// ================= ESTADÍSTICAS =================
 
 app.get('/api/stats', async (req, res) => {
   try {
@@ -567,8 +545,6 @@ app.get('/api/stats', async (req, res) => {
     res.status(401).json({ success: false, error: error.message });
   }
 });
-
-// ================= VENTAS =================
 
 app.post('/api/sales', async (req, res) => {
   try {
