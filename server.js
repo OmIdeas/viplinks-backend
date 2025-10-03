@@ -1,3 +1,6 @@
+import http from 'http';                 
+import { initRealtime } from './realtime.js'; 
+
 import express from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
@@ -576,6 +579,10 @@ app.post('/api/sales', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`VipLinks API running on port ${PORT}`);
+const server = http.createServer(app);
+initRealtime(server);
+
+server.listen(PORT, () => {
+  console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
