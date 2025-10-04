@@ -1,8 +1,8 @@
-// realtime.js (ESM)
+// /realtime.js
 import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
-import pg from 'pg';
-const { Client } = pg;
+import pgPkg from 'pg';
+const { Client } = pgPkg;
 
 export function initRealtime(httpServer) {
   // 1) Socket.IO
@@ -15,14 +15,17 @@ export function initRealtime(httpServer) {
     pingTimeout: 20000,
   });
 
+  // Dejar io disponible para /__debug/ping
+  globalThis.VIP_IO = io;
+
   // 2) Auth por JWT en el handshake
   io.use((socket, next) => {
     try {
-      const authHeader = socket.handshake.headers['authorization'] || '';
+      const hdr = socket.handshake.headers || {};
       const token =
-        socket.handshake.auth?.token ||
-        socket.handshake.headers['x-auth-token'] ||
-        (authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null);
+        (socket.handshake.auth && socket.handshake.auth.token) ||
+        hdr['x-auth-token'] ||
+        (hdr['authorization'] || '').split(' ')[1];
 
       if (!token) return next(new Error('NO_TOKEN'));
       const payload = jwt.verify(token, process.env.JWT_SECRET);
@@ -38,10 +41,10 @@ export function initRealtime(httpServer) {
     }
   });
 
-  // 3) Rooms útiles
+  // 3) Rooms
   io.on('connection', (socket) => {
-    const { id, role, sellerId } = socket.user;
-    socket.join(`user:${id}`);
+    const { id, role, sellerId } = socket.user || {};
+    if (id) socket.join(`user:${id}`);
     if (sellerId) socket.join(`seller:${sellerId}`);
     if (role === 'admin') socket.join('admins');
 
@@ -54,31 +57,35 @@ export function initRealtime(httpServer) {
   console.log('[Realtime] Socket.IO listo');
 
   // 4) LISTEN/NOTIFY en Postgres (canal: events)
-  const pgClient = new Client({
+  const pg = new Client({
     connectionString: process.env.DATABASE_URL,
     ssl: process.env.DATABASE_URL?.includes('sslmode=require')
       ? { rejectUnauthorized: false }
       : undefined,
   });
 
-  pgClient.connect()
+  pg.connect()
     .then(async () => {
-      await pgClient.query('LISTEN events');
-      pgClient.on('notification', (msg) => {
+      await pg.query('LISTEN events');
+      console.log('[Realtime] PG LISTEN events listo');
+
+      pg.on('notification', (msg) => {
+        console.log('[Realtime] PG payload:', msg.channel, msg.payload);
         try {
-          const payload = JSON.parse(msg?.payload || '{}');
+          const payload = JSON.parse(msg && msg.payload ? msg.payload : '{}');
           const { type, userId, sellerId, data } = payload;
 
-          if (userId) io.to(`user:${userId}`).emit('db:event', { type, data });
+          if (userId)  io.to(`user:${userId}`).emit('db:event', { type, data });
           if (sellerId) io.to(`seller:${sellerId}`).emit('db:event', { type, data });
           io.to('admins').emit('db:event', { type, data, meta: { userId, sellerId } });
         } catch (e) {
           console.error('[Realtime] Bad PG payload:', e.message);
         }
       });
-      console.log('[Realtime] PG LISTEN events listo');
     })
     .catch((e) => {
       console.warn('[Realtime] No se pudo conectar a Postgres para LISTEN/NOTIFY:', e.message);
     });
+
+  return io;
 }
