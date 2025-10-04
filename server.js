@@ -591,3 +591,22 @@ globalThis.VIP_IO = io;              // ← la exponemos para la ruta de debug
 server.listen(PORT, () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
+// Enviar a TODOS los sockets, sin usar rooms
+app.get('/__debug/pingAll', (req, res) => {
+  const io = globalThis.VIP_IO;
+  if (!io) return res.status(500).json({ ok: false, error: 'io not ready' });
+  const payload = { type: 'debug.all', data: { at: Date.now(), from: 'http' } };
+  io.emit('db:event', payload);
+  res.json({ ok: true, sentTo: 'ALL' });
+});
+
+// Ver qué rooms/sockets hay conectados
+app.get('/__debug/rooms', (req, res) => {
+  const io = globalThis.VIP_IO;
+  if (!io) return res.status(500).json({ ok: false, error: 'io not ready' });
+
+  const rooms   = Array.from(io.of('/').adapter.rooms.keys());
+  const sockets = Array.from(io.of('/').sockets.keys());
+  res.json({ ok: true, rooms, sockets });
+});
