@@ -1,5 +1,5 @@
-import http from 'http';                 
-import { initRealtime } from './realtime.js'; 
+import http from 'http';
+import { initRealtime } from './realtime.js';
 
 import express from 'express';
 import cors from 'cors';
@@ -41,6 +41,9 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
+// ------------------------------
+// Helpers de auth y perfiles
+// ------------------------------
 function makeUsername(email, provided) {
   if (provided && provided.trim()) return provided.trim();
   return (email || '').split('@')[0] || 'user';
@@ -157,6 +160,9 @@ async function getAuthenticatedUser(req) {
   }
 }
 
+// ------------------------------
+// Rutas de auth
+// ------------------------------
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { email, password, username, full_name, name, display_name } = req.body;
@@ -311,7 +317,7 @@ app.post('/api/auth/login', async (req, res) => {
 
     if (!user.email_confirmed_at) {
       await createVerificationCode(user.id, email);
-      
+
       return res.json({
         success: false,
         requiresVerification: true,
@@ -348,6 +354,9 @@ app.post('/api/auth/logout', (_req, res) => {
   return res.json({ success: true, message: 'Logged out successfully' });
 });
 
+// ------------------------------
+// Productos (scope por seller_id)
+// ------------------------------
 app.get('/api/products', async (req, res) => {
   try {
     const { profile_id } = await getAuthenticatedUser(req);
@@ -462,6 +471,9 @@ app.delete('/api/products/:id', async (req, res) => {
   }
 });
 
+// ------------------------------
+// Estadísticas
+// ------------------------------
 app.get('/api/stats', async (req, res) => {
   try {
     const { profile_id } = await getAuthenticatedUser(req);
@@ -504,7 +516,7 @@ app.get('/api/stats', async (req, res) => {
       : 1.3;
 
     const productsCommission = generalSales.length > 0
-      ? (generalSales.reduce((sum, sale) => sum + parseFloat(sale.commission || 0), 0) /
+      ? (generalSales.reduce((sum, sale) => sum + parseFloat(sale.commission || 0), 0) / 
          generalSales.reduce((sum, sale) => sum + parseFloat(sale.amount || 0), 0)) * 100
       : 7.0;
 
@@ -549,40 +561,33 @@ app.get('/api/stats', async (req, res) => {
   }
 });
 
-app.post('/api/sales', async (req, res) => {
-  try {
-    const { profile_id } = await getAuthenticatedUser(req);
+// ------------------------------
+// Ruta de debug realtime (temporal)
+// GET /__debug/ping          -> envía a admins
+// GET /__debug/ping?user=UID -> envía a user:<UID>
+// ------------------------------
+app.get('/__debug/ping', (req, res) => {
+  const io = globalThis.VIP_IO;
+  if (!io) return res.status(500).json({ ok: false, error: 'io not ready' });
 
-    const saleData = {
-      product_id: req.body.product_id,
-      seller_id: profile_id,
-      buyer_email: req.body.buyer_email,
-      amount: req.body.amount,
-      commission: req.body.commission,
-      seller_amount: req.body.seller_amount,
-      payment_id: req.body.payment_id,
-      payment_method: req.body.payment_method || 'mercadopago',
-      status: req.body.status || 'pending'
-    };
+  const userId = req.query.user;
+  const payload = { type: 'debug.http', data: { at: Date.now(), from: 'http' } };
 
-    const { data: sale, error } = await supabaseAdmin
-      .from('sales')
-      .insert([saleData])
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    res.json({ success: true, sale });
-  } catch (error) {
-    res.status(400).json({ success: false, error: error.message });
+  if (userId) {
+    io.to(`user:${userId}`).emit('db:event', payload);
+  } else {
+    io.to('admins').emit('db:event', payload);
   }
+  res.json({ ok: true, sentTo: userId ? `user:${userId}` : 'admins' });
 });
 
+// ------------------------------
+// HTTP + Socket.IO
+// ------------------------------
 const server = http.createServer(app);
-initRealtime(server);
+const io = initRealtime(server);     // ← obtenemos la instancia
+globalThis.VIP_IO = io;              // ← la exponemos para la ruta de debug
 
 server.listen(PORT, () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
-
