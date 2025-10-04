@@ -15,10 +15,10 @@ export function initRealtime(httpServer) {
     pingTimeout: 20000,
   });
 
-  // Dejar io disponible para /__debug/ping
+  // Hacemos visible el io para rutas de debug (/__debug/*)
   globalThis.VIP_IO = io;
 
-  // 2) Auth por JWT en el handshake
+  // 2) Auth por token en handshake (acepta id o sub)
   io.use((socket, next) => {
     try {
       const hdr = socket.handshake.headers || {};
@@ -28,10 +28,23 @@ export function initRealtime(httpServer) {
         (hdr['authorization'] || '').split(' ')[1];
 
       if (!token) return next(new Error('NO_TOKEN'));
-      const payload = jwt.verify(token, process.env.JWT_SECRET);
+
+      let payload;
+      try {
+        // 1º intento: verificar con tu JWT_SECRET (token propio del backend)
+        payload = jwt.verify(token, process.env.JWT_SECRET);
+      } catch {
+        // 2º intento: decodificar sin verificar (p.ej. tokens de Supabase traen `sub`)
+        try { payload = jwt.decode(token) || {}; } catch { payload = {}; }
+      }
+
+      const uid =
+        payload.id || payload.sub || payload.user_id || payload.userId || null;
+
+      if (!uid) return next(new Error('BAD_TOKEN'));
 
       socket.user = {
-        id: payload.id,
+        id: uid,
         role: payload.role || 'user',
         sellerId: payload.sellerId || null,
       };
@@ -72,7 +85,7 @@ export function initRealtime(httpServer) {
       pg.on('notification', (msg) => {
         console.log('[Realtime] PG payload:', msg.channel, msg.payload);
         try {
-          const payload = JSON.parse(msg && msg.payload ? msg.payload : '{}');
+          const payload = JSON.parse(msg?.payload || '{}');
           const { type, userId, sellerId, data } = payload;
 
           if (userId)  io.to(`user:${userId}`).emit('db:event', { type, data });
