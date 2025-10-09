@@ -1,12 +1,11 @@
 import http from 'http';
 import { initRealtime } from './realtime.js';
-import rconRoutes from './routes/rcon.js'; // ← AGREGADO
-
 import express from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
 import { createClient } from '@supabase/supabase-js';
 import nodemailer from 'nodemailer';
+import { Rcon } from 'rcon-client';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -355,8 +354,127 @@ app.post('/api/auth/logout', (_req, res) => {
   return res.json({ success: true, message: 'Logged out successfully' });
 });
 
-// ← AGREGADO: Rutas RCON
-app.use('/api/rcon', rconRoutes);
+// ------------------------------
+// RUTAS RCON (INTEGRADAS DIRECTAMENTE)
+// ------------------------------
+app.post('/api/rcon/test', async (req, res) => {
+  const { ip, port, password } = req.body;
+
+  if (!ip || !port || !password) {
+    return res.json({ 
+      success: false, 
+      error: 'Faltan datos: IP, puerto o password' 
+    });
+  }
+
+  const rcon = new Rcon({ 
+    host: ip, 
+    port: parseInt(port),
+    timeout: 5000 
+  });
+
+  try {
+    await rcon.connect();
+    await rcon.authenticate(password);
+    
+    const response = await rcon.send('status');
+    await rcon.end();
+    
+    const serverName = response.match(/hostname:\s*(.+)/i)?.[1]?.trim() || 
+                      response.match(/server\s+name:\s*(.+)/i)?.[1]?.trim() ||
+                      'Servidor conectado exitosamente';
+    
+    res.json({ 
+      success: true,
+      server_info: serverName,
+      message: 'Conexión RCON exitosa'
+    });
+    
+  } catch (error) {
+    console.error('RCON Test Error:', error);
+    
+    let errorMsg = 'Error de conexión';
+    if (error.message.includes('authentication')) {
+      errorMsg = 'Contraseña RCON incorrecta';
+    } else if (error.message.includes('ECONNREFUSED')) {
+      errorMsg = 'No se pudo conectar al servidor (verifica IP/puerto)';
+    } else if (error.message.includes('timeout')) {
+      errorMsg = 'Tiempo de espera agotado';
+    }
+    
+    res.json({ 
+      success: false, 
+      error: errorMsg
+    });
+  }
+});
+
+app.post('/api/rcon/execute', async (req, res) => {
+  const { ip, port, password, commands, buyer_info } = req.body;
+
+  if (!ip || !port || !password || !commands || !Array.isArray(commands)) {
+    return res.json({ 
+      success: false, 
+      error: 'Faltan datos requeridos' 
+    });
+  }
+
+  const rcon = new Rcon({ 
+    host: ip, 
+    port: parseInt(port),
+    timeout: 5000 
+  });
+
+  try {
+    await rcon.connect();
+    await rcon.authenticate(password);
+    
+    const results = [];
+
+    for (const cmd of commands) {
+      try {
+        let processedCmd = cmd;
+        if (buyer_info) {
+          processedCmd = cmd
+            .replace(/{steamid}/g, buyer_info.steamid || '')
+            .replace(/{username}/g, buyer_info.username || '')
+            .replace(/{email}/g, buyer_info.email || '')
+            .replace(/{orderid}/g, buyer_info.orderid || '');
+        }
+
+        const response = await rcon.send(processedCmd);
+        results.push({ 
+          command: processedCmd, 
+          success: true, 
+          response: response || 'Comando ejecutado correctamente'
+        });
+        
+      } catch (err) {
+        results.push({ 
+          command: cmd, 
+          success: false, 
+          error: err.message 
+        });
+      }
+    }
+
+    await rcon.end();
+    
+    res.json({ 
+      success: true, 
+      results: results,
+      executed_count: results.filter(r => r.success).length,
+      failed_count: results.filter(r => !r.success).length
+    });
+    
+  } catch (error) {
+    console.error('RCON Execute Error:', error);
+    res.json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
 
 // ------------------------------
 // Productos (scope por seller_id)
@@ -567,8 +685,6 @@ app.get('/api/stats', async (req, res) => {
 
 // ------------------------------
 // Ruta de debug realtime (temporal)
-// GET /__debug/ping          -> envía a admins
-// GET /__debug/ping?user=UID -> envía a user:<UID>
 // ------------------------------
 app.get('/__debug/ping', (req, res) => {
   const io = globalThis.VIP_IO;
@@ -596,7 +712,6 @@ server.listen(PORT, () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
 
-// Enviar a TODOS los sockets, sin usar rooms
 app.get('/__debug/pingAll', (req, res) => {
   const io = globalThis.VIP_IO;
   if (!io) return res.status(500).json({ ok: false, error: 'io not ready' });
@@ -605,7 +720,6 @@ app.get('/__debug/pingAll', (req, res) => {
   res.json({ ok: true, sentTo: 'ALL' });
 });
 
-// Ver qué rooms/sockets hay conectados
 app.get('/__debug/rooms', (req, res) => {
   const io = globalThis.VIP_IO;
   if (!io) return res.status(500).json({ ok: false, error: 'io not ready' });
