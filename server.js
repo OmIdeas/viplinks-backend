@@ -1,5 +1,6 @@
 import http from 'http';
 import { initRealtime } from './realtime.js';
+import rconRoutes from './routes/rcon.js'; // ← AGREGADO
 
 import express from 'express';
 import cors from 'cors';
@@ -354,6 +355,9 @@ app.post('/api/auth/logout', (_req, res) => {
   return res.json({ success: true, message: 'Logged out successfully' });
 });
 
+// ← AGREGADO: Rutas RCON
+app.use('/api/rcon', rconRoutes);
+
 // ------------------------------
 // Productos (scope por seller_id)
 // ------------------------------
@@ -585,8 +589,8 @@ app.get('/__debug/ping', (req, res) => {
 // HTTP + Socket.IO
 // ------------------------------
 const server = http.createServer(app);
-const io = initRealtime(server);     // ← obtenemos la instancia
-globalThis.VIP_IO = io;              // ← la exponemos para la ruta de debug
+const io = initRealtime(server);
+globalThis.VIP_IO = io;
 
 server.listen(PORT, () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
