@@ -475,7 +475,83 @@ app.post('/api/rcon/execute', async (req, res) => {
     });
   }
 });
+// ------------------------------
+// EJECUTAR COMANDOS DE PRUEBA (SIN PAGO)
+// ------------------------------
+app.post('/api/rcon/test-execute', async (req, res) => {
+  try {
+    await getAuthenticatedUser(req);
 
+    const { ip, port, password, commands, test_steamid, test_username, test_email } = req.body;
+
+    if (!ip || !port || !password || !commands || !Array.isArray(commands)) {
+      return res.json({ 
+        success: false, 
+        error: 'Faltan datos: ip, port, password, commands' 
+      });
+    }
+
+    const rcon = new Rcon({ 
+      host: ip, 
+      port: parseInt(port),
+      timeout: 5000 
+    });
+
+    await rcon.connect();
+    await rcon.authenticate(password);
+    
+    const results = [];
+
+    const buyer_info = {
+      steamid: test_steamid || 'STEAM_0:1:12345678',
+      username: test_username || 'TestPlayer',
+      email: test_email || 'test@example.com',
+      orderid: 'TEST_' + Date.now()
+    };
+
+    for (const cmd of commands) {
+      try {
+        const processedCmd = cmd
+          .replace(/{steamid}/g, buyer_info.steamid)
+          .replace(/{username}/g, buyer_info.username)
+          .replace(/{email}/g, buyer_info.email)
+          .replace(/{orderid}/g, buyer_info.orderid);
+
+        const response = await rcon.send(processedCmd);
+        results.push({ 
+          command: processedCmd, 
+          success: true, 
+          response: response || 'Comando ejecutado correctamente'
+        });
+        
+      } catch (err) {
+        results.push({ 
+          command: cmd, 
+          success: false, 
+          error: err.message 
+        });
+      }
+    }
+
+    await rcon.end();
+    
+    res.json({ 
+      success: true,
+      message: 'Comandos de prueba ejecutados',
+      buyer_info_used: buyer_info,
+      results: results,
+      executed_count: results.filter(r => r.success).length,
+      failed_count: results.filter(r => !r.success).length
+    });
+    
+  } catch (error) {
+    console.error('RCON Test Execute Error:', error);
+    res.json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
 // ------------------------------
 // Productos (scope por seller_id)
 // ------------------------------
@@ -728,3 +804,4 @@ app.get('/__debug/rooms', (req, res) => {
   const sockets = Array.from(io.of('/').sockets.keys());
   res.json({ ok: true, rooms, sockets });
 });
+
