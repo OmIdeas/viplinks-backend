@@ -11,7 +11,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors({
-  origin: ['https://app.viplinks.org', 'http://localhost:3000'],
+  origin: ['https://app.viplinks.org', 'http://localhost:3000', 'https://www.viplinks.org', 'http://localhost:5173', 'https://viplinks.org' ],
   credentials: true
 }));
 app.use(express.json());
@@ -804,4 +804,5 @@ app.get('/__debug/rooms', (req, res) => {
   const sockets = Array.from(io.of('/').sockets.keys());
   res.json({ ok: true, rooms, sockets });
 });
+
 
