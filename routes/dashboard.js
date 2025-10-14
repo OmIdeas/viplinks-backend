@@ -1,6 +1,6 @@
 // routes/dashboard.js
 import express from 'express';
-import { supabaseAdmin } from '../lib/supabase.js';
+import { supabaseAdmin } from '../supabase.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = express.Router();
