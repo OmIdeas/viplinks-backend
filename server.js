@@ -6,6 +6,7 @@ import jwt from 'jsonwebtoken';
 import { createClient } from '@supabase/supabase-js';
 import nodemailer from 'nodemailer';
 import { Rcon } from 'rcon-client';
+import dashboardRouter from './routes/dashboard.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -17,6 +18,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }))
 app.use(express.json());
+app.use('/api/dashboard', dashboardRouter); 
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseAnon = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY;
@@ -806,6 +808,7 @@ app.get('/__debug/rooms', (req, res) => {
   const sockets = Array.from(io.of('/').sockets.keys());
   res.json({ ok: true, rooms, sockets });
 });
+
 
 
 
