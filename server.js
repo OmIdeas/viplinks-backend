@@ -3,7 +3,7 @@ import { initRealtime } from './realtime.js';
 import express from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
-import { supabase, supabaseAdmin } from './lib/supabase.js'; // <-- NUEVO
+import { supabase, supabaseAdmin } from './supabase.js';
 import nodemailer from 'nodemailer';
 import { Rcon } from 'rcon-client';
 import dashboardRouter from './routes/dashboard.js';
@@ -801,6 +801,7 @@ app.get('/__debug/rooms', (req, res) => {
   const sockets = Array.from(io.of('/').sockets.keys());
   res.json({ ok: true, rooms, sockets });
 });
+
 
 
 
