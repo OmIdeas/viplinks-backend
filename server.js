@@ -3,7 +3,7 @@ import { initRealtime } from './realtime.js';
 import express from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
-import { createClient } from '@supabase/supabase-js';
+import { supabase, supabaseAdmin } from './lib/supabase.js'; // <-- NUEVO
 import nodemailer from 'nodemailer';
 import { Rcon } from 'rcon-client';
 import dashboardRouter from './routes/dashboard.js';
@@ -20,14 +20,6 @@ app.use(cors({
 app.use(express.json());
 app.use('/api/dashboard', dashboardRouter); 
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseAnon = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY;
-const supabase = createClient(supabaseUrl, supabaseAnon, {
-  auth: { persistSession: false, autoRefreshToken: false }
-});
-
-const supabaseServiceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRole);
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this';
 
@@ -808,6 +800,7 @@ app.get('/__debug/rooms', (req, res) => {
   const sockets = Array.from(io.of('/').sockets.keys());
   res.json({ ok: true, rooms, sockets });
 });
+
 
 
 
