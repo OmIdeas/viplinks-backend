@@ -1,4 +1,3 @@
-// lib/supabase.js
 import { createClient } from '@supabase/supabase-js';
 
 const url = process.env.SUPABASE_URL;
@@ -18,3 +17,25 @@ export const supabase = createClient(url, anon, {
 });
 
 export const supabaseAdmin = createClient(url, svc);
+```
+
+- Commit: `fix: clean supabase.js file`
+
+### 2. **Fuerza un rebuild limpio en Railway:**
+
+En Railway:
+1. Ve a Settings del servicio
+2. Busca **"Redeploy"** o **"Restart"**
+3. Haz clic para forzar un nuevo deployment desde cero
+
+### 3. **Si el problema persiste, crea un `.dockerignore` explícito:**
+
+Crea un archivo `.dockerignore` en la raíz con este contenido:
+```
+node_modules
+npm-debug.log
+.git
+.gitignore
+README.md
+.env
+.DS_Store
