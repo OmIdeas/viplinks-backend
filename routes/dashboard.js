@@ -1,7 +1,15 @@
 // routes/dashboard.js
 import express from 'express';
-import { supabaseAdmin } from '../lib/supabase.js';
+import { createClient } from '@supabase/supabase-js';
 import { requireAuth } from '../middleware/auth.js';
+
+// Cliente admin local al router (evita depender de ../lib)
+const supabaseAdmin = (() => {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+})();
 
 const router = express.Router();
 router.use(requireAuth);
