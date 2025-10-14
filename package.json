@@ -7,6 +7,7 @@
   "scripts": {
     "start": "node server.js",
     "cleanup": "node cleanup-users.js"
+    "engines": { "node": "20.x" }
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
@@ -21,6 +22,7 @@
     "rcon-client": "^4.2.3"
   }
 }
+
 
 
 
