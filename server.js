@@ -7,6 +7,7 @@ import { supabase, supabaseAdmin } from './lib/supabase.js'; // <-- NUEVO
 import nodemailer from 'nodemailer';
 import { Rcon } from 'rcon-client';
 import dashboardRouter from './routes/dashboard.js';
+import { requireAuth } from './middleware/auth.js'; // arriba del archivo
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -16,9 +17,9 @@ app.use(cors({
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
-}))
+}));
 app.use(express.json());
-app.use('/api/dashboard', dashboardRouter); 
+app.use('/api/dashboard', requireAuth, dashboardRouter); 
 
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this';
@@ -800,6 +801,7 @@ app.get('/__debug/rooms', (req, res) => {
   const sockets = Array.from(io.of('/').sockets.keys());
   res.json({ ok: true, rooms, sockets });
 });
+
 
 
 
