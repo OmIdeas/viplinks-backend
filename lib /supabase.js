@@ -17,7 +17,6 @@ export const supabase = createClient(url, anon, {
 });
 
 export const supabaseAdmin = createClient(url, svc);
-```
 
 - Commit: `fix: clean supabase.js file`
 
