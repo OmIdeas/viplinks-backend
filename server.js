@@ -781,7 +781,7 @@ const server = http.createServer(app);
 const io = initRealtime(server);
 globalThis.VIP_IO = io;
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
 
@@ -801,6 +801,7 @@ app.get('/__debug/rooms', (req, res) => {
   const sockets = Array.from(io.of('/').sockets.keys());
   res.json({ ok: true, rooms, sockets });
 });
+
 
 
 
