@@ -159,6 +159,37 @@ async function getAuthenticatedUser(req) {
 }
 
 // ------------------------------
+// Helper: Calcular comisiones
+// ------------------------------
+function calculateCommission(product) {
+  const amount = parseFloat(product.price);
+  let commissionRate = 0;
+  
+  if (product.type === 'gaming') {
+    // Gaming: 1.3%
+    commissionRate = 0.013;
+  } else {
+    // General: 7% base
+    commissionRate = 0.07;
+    
+    // Si tiene garantía: +2% adicional
+    if (product.has_guarantee) {
+      commissionRate += 0.02; // Total: 9%
+    }
+  }
+  
+  const commission = amount * commissionRate;
+  const seller_amount = amount - commission;
+  
+  return {
+    amount,
+    commission,
+    commission_rate: (commissionRate * 100).toFixed(1) + '%',
+    seller_amount
+  };
+}
+
+// ------------------------------
 // Rutas de auth
 // ------------------------------
 app.post('/api/auth/register', async (req, res) => {
@@ -744,6 +775,7 @@ app.get('/__debug/rooms', (req, res) => {
   const sockets = Array.from(io.of('/').sockets.keys());
   res.json({ ok: true, rooms, sockets });
 });
+
 
 
 
