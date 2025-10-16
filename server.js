@@ -382,6 +382,63 @@ app.post('/api/auth/logout', (_req, res) => {
   return res.json({ success: true, message: 'Logged out successfully' });
 });
 
+/ ------------------------------
+// Upload de imágenes a Supabase Storage
+// ------------------------------
+app.post('/api/upload-image', async (req, res) => {
+  try {
+    const { file, fileName } = req.body;
+    
+    if (!file || !fileName) {
+      return res.status(400).json({ success: false, error: 'Missing file or fileName' });
+    }
+
+    // Verificar autenticación
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
+    try {
+      jwt.verify(token, JWT_SECRET);
+    } catch {
+      return res.status(401).json({ success: false, error: 'Invalid token' });
+    }
+
+    // Convertir base64 a Buffer
+    const base64Data = file.replace(/^data:image\/\w+;base64,/, '');
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    // Subir a Supabase Storage
+    const { data, error } = await supabaseAdmin.storage
+      .from('product-images')
+      .upload(`products/${fileName}`, buffer, {
+        contentType: 'image/jpeg',
+        upsert: false
+      });
+
+    if (error) {
+      console.error('Supabase Storage error:', error);
+      return res.status(400).json({ success: false, error: error.message });
+    }
+
+    // Obtener URL pública
+    const { data: urlData } = supabaseAdmin.storage
+      .from('product-images')
+      .getPublicUrl(`products/${fileName}`);
+
+    return res.json({ 
+      success: true, 
+      url: urlData.publicUrl,
+      path: data.path
+    });
+
+  } catch (error) {
+    console.error('Upload error:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // ------------------------------
 // RUTAS RCON
 // ------------------------------
@@ -849,6 +906,7 @@ globalThis.VIP_IO = io;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
 
 
