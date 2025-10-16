@@ -7,7 +7,7 @@ import { supabase, supabaseAdmin } from './supabase.js';
 import nodemailer from 'nodemailer';
 import { Rcon } from 'rcon-client';
 import dashboardRouter from './routes/dashboard.js';
-import { requireAuth } from './middleware/auth.js'; // arriba del archivo
+import { requireAuth } from './middleware/auth.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -20,8 +20,7 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
-app.use('/api/dashboard', requireAuth, dashboardRouter); 
-
+app.use('/api/dashboard', requireAuth, dashboardRouter);
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this';
 
@@ -384,7 +383,7 @@ app.post('/api/auth/logout', (_req, res) => {
 });
 
 // ------------------------------
-// RUTAS RCON (INTEGRADAS DIRECTAMENTE)
+// RUTAS RCON
 // ------------------------------
 app.post('/api/rcon/test', async (req, res) => {
   const { ip, port, password } = req.body;
@@ -504,9 +503,7 @@ app.post('/api/rcon/execute', async (req, res) => {
     });
   }
 });
-// ------------------------------
-// EJECUTAR COMANDOS DE PRUEBA (SIN PAGO)
-// ------------------------------
+
 app.post('/api/rcon/test-execute', async (req, res) => {
   try {
     await getAuthenticatedUser(req);
@@ -581,14 +578,46 @@ app.post('/api/rcon/test-execute', async (req, res) => {
     });
   }
 });
+
 // ------------------------------
 // Productos (scope por seller_id)
 // ------------------------------
+app.get('/api/products', async (req, res) => {
+  try {
+    const { profile_id } = await getAuthenticatedUser(req);
+    
+    const { data: products, error } = await supabaseAdmin
+      .from('products')
+      .select('*')
+      .eq('seller_id', profile_id)
+      .order('created_at', { ascending: false });
+      
+    if (error) throw error;
+
+    const adaptedProducts = (products || []).map(product => ({
+      id: product.id,
+      name: product.name,
+      description: product.description,
+      price: parseFloat(product.price || 0),
+      category: product.type,
+      status: product.status,
+      deliveryMethod: product.delivery_method,
+      hasGuarantee: product.has_guarantee || false,
+      created_at: product.created_at,
+      image_url: product.image_url,
+      views: product.views || 0
+    }));
+
+    res.json({ success: true, products: adaptedProducts });
+  } catch (error) {
+    res.status(401).json({ success: false, error: error.message });
+  }
+});
+
 app.post('/api/products', async (req, res) => {
   try {
     const { profile_id } = await getAuthenticatedUser(req);
     
-    // 🔍 DEBUG: Verificar usuario
     console.log('=== CREATING PRODUCT ===');
     console.log('User profile_id:', profile_id);
     console.log('Request body:', JSON.stringify(req.body, null, 2));
@@ -600,20 +629,23 @@ app.post('/api/products', async (req, res) => {
       price: parseFloat(req.body.price),
       type: req.body.category || 'gaming',
       category: req.body.category || 'gaming',
-      delivery_method: 'rcon',
+      delivery_method: req.body.category === 'gaming' ? 'rcon' : 'manual',
       image_url: req.body.image || null,
       status: req.body.status || 'active',
       product_type: req.body.type,
-      // duration: req.body.duration,  // Comentado - columna no existe en DB
       server_config: req.body.server || null,
       delivery_commands: req.body.commands || null,
       payment_methods: req.body.payment_methods || null,
       visibility: 'private',
       views: 0,
-      sales_count: 0
+      sales_count: 0,
+      // ✅ NUEVO: Garantía solo para productos generales
+      has_guarantee: req.body.category === 'general' && req.body.has_guarantee === true
     };
 
-    // 🔍 DEBUG: Verificar datos del producto
+    // Calcular y mostrar la comisión
+    const fees = calculateCommission(productData);
+    console.log('Product fees:', fees);
     console.log('Product data to insert:', JSON.stringify(productData, null, 2));
 
     const { data: product, error } = await supabaseAdmin
@@ -628,13 +660,63 @@ app.post('/api/products', async (req, res) => {
     }
 
     console.log('✅ Product created successfully:', product.id);
-    res.json({ success: true, product });
+    
+    res.json({ 
+      success: true, 
+      product,
+      fees // ← Enviar las comisiones al frontend
+    });
+
   } catch (error) {
     console.error('❌ Error creating product:', error.message);
     console.error('Full error:', error);
     res.status(400).json({ success: false, error: error.message });
   }
 });
+
+app.put('/api/products/:id', async (req, res) => {
+  try {
+    const { profile_id } = await getAuthenticatedUser(req);
+    const productId = req.params.id;
+
+    const updateData = { ...req.body, updated_at: new Date().toISOString() };
+    if (updateData.category) updateData.type = updateData.category;
+
+    const { data: product, error } = await supabaseAdmin
+      .from('products')
+      .update(updateData)
+      .eq('id', productId)
+      .eq('seller_id', profile_id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    res.json({ success: true, product });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+app.delete('/api/products/:id', async (req, res) => {
+  try {
+    const { profile_id } = await getAuthenticatedUser(req);
+    const productId = req.params.id;
+
+    const { error } = await supabaseAdmin
+      .from('products')
+      .delete()
+      .eq('id', productId)
+      .eq('seller_id', profile_id);
+
+    if (error) throw error;
+
+    res.json({ success: true, message: 'Product deleted successfully' });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+});
+
 // ------------------------------
 // Estadísticas
 // ------------------------------
@@ -726,7 +808,7 @@ app.get('/api/stats', async (req, res) => {
 });
 
 // ------------------------------
-// Ruta de debug realtime (temporal)
+// Rutas de debug realtime
 // ------------------------------
 app.get('/__debug/ping', (req, res) => {
   const io = globalThis.VIP_IO;
@@ -752,7 +834,7 @@ app.get('/__debug/pingAll', (req, res) => {
 app.get('/__debug/rooms', (req, res) => {
   const io = globalThis.VIP_IO;
   if (!io) return res.status(500).json({ ok: false, error: 'io not ready' });
-  const rooms   = Array.from(io.of('/').adapter.rooms.keys());
+  const rooms = Array.from(io.of('/').adapter.rooms.keys());
   const sockets = Array.from(io.of('/').sockets.keys());
   res.json({ ok: true, rooms, sockets });
 });
@@ -767,18 +849,6 @@ globalThis.VIP_IO = io;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
-app.get('/__debug/rooms', (req, res) => {
-  const io = globalThis.VIP_IO;
-  if (!io) return res.status(500).json({ ok: false, error: 'io not ready' });
-
-  const rooms   = Array.from(io.of('/').adapter.rooms.keys());
-  const sockets = Array.from(io.of('/').sockets.keys());
-  res.json({ ok: true, rooms, sockets });
-});
-
-
-
-
 
 
 
