@@ -553,61 +553,37 @@ app.post('/api/rcon/test-execute', async (req, res) => {
 // ------------------------------
 // Productos (scope por seller_id)
 // ------------------------------
-app.get('/api/products', async (req, res) => {
-  try {
-    const { profile_id } = await getAuthenticatedUser(req);
-
-    const { data: products, error } = await supabaseAdmin
-      .from('products')
-      .select('*')
-      .eq('seller_id', profile_id)
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-
-    const adaptedProducts = (products || []).map(product => ({
-      id: product.id,
-      name: product.name,
-      description: product.description,
-      price: parseFloat(product.price || 0),
-      category: product.type,
-      status: product.status,
-      deliveryMethod: product.delivery_method,
-      hasGuarantee: false,
-      created_at: product.created_at,
-      image_url: product.image_url,
-      views: product.views || 0
-    }));
-
-    res.json({ success: true, products: adaptedProducts });
-  } catch (error) {
-    res.status(401).json({ success: false, error: error.message });
-  }
-});
-
 app.post('/api/products', async (req, res) => {
   try {
     const { profile_id } = await getAuthenticatedUser(req);
+    
+    // 🔍 DEBUG: Verificar usuario
+    console.log('=== CREATING PRODUCT ===');
+    console.log('User profile_id:', profile_id);
+    console.log('Request body:', JSON.stringify(req.body, null, 2));
 
-const productData = {
-  seller_id: profile_id,
-  name: req.body.name,
-  description: req.body.description,
-  price: parseFloat(req.body.price),
-  type: req.body.category || 'gaming',
-  category: req.body.category || 'gaming',
-  delivery_method: 'rcon',
-  image_url: req.body.image || null,
-  status: req.body.status || 'active',
-  product_type: req.body.type,
-  // duration: req.body.duration,  // Comentado - columna no existe en DB
-  server_config: req.body.server || null,
-  delivery_commands: req.body.commands || null,
-  payment_methods: req.body.payment_methods || null,
-  visibility: 'private',
-  views: 0,
-  sales_count: 0
-};
+    const productData = {
+      seller_id: profile_id,
+      name: req.body.name,
+      description: req.body.description,
+      price: parseFloat(req.body.price),
+      type: req.body.category || 'gaming',
+      category: req.body.category || 'gaming',
+      delivery_method: 'rcon',
+      image_url: req.body.image || null,
+      status: req.body.status || 'active',
+      product_type: req.body.type,
+      // duration: req.body.duration,  // Comentado - columna no existe en DB
+      server_config: req.body.server || null,
+      delivery_commands: req.body.commands || null,
+      payment_methods: req.body.payment_methods || null,
+      visibility: 'private',
+      views: 0,
+      sales_count: 0
+    };
+
+    // 🔍 DEBUG: Verificar datos del producto
+    console.log('Product data to insert:', JSON.stringify(productData, null, 2));
 
     const { data: product, error } = await supabaseAdmin
       .from('products')
@@ -615,58 +591,19 @@ const productData = {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('❌ Supabase error:', error);
+      throw error;
+    }
 
+    console.log('✅ Product created successfully:', product.id);
     res.json({ success: true, product });
   } catch (error) {
-    console.error('Error creating product:', error);
+    console.error('❌ Error creating product:', error.message);
+    console.error('Full error:', error);
     res.status(400).json({ success: false, error: error.message });
   }
 });
-
-app.put('/api/products/:id', async (req, res) => {
-  try {
-    const { profile_id } = await getAuthenticatedUser(req);
-    const productId = req.params.id;
-
-    const updateData = { ...req.body, updated_at: new Date().toISOString() };
-    if (updateData.category) updateData.type = updateData.category;
-
-    const { data: product, error } = await supabaseAdmin
-      .from('products')
-      .update(updateData)
-      .eq('id', productId)
-      .eq('seller_id', profile_id)
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    res.json({ success: true, product });
-  } catch (error) {
-    res.status(400).json({ success: false, error: error.message });
-  }
-});
-
-app.delete('/api/products/:id', async (req, res) => {
-  try {
-    const { profile_id } = await getAuthenticatedUser(req);
-    const productId = req.params.id;
-
-    const { error } = await supabaseAdmin
-      .from('products')
-      .delete()
-      .eq('id', productId)
-      .eq('seller_id', profile_id);
-
-    if (error) throw error;
-
-    res.json({ success: true, message: 'Product deleted successfully' });
-  } catch (error) {
-    res.status(400).json({ success: false, error: error.message });
-  }
-});
-
 // ------------------------------
 // Estadísticas
 // ------------------------------
@@ -807,6 +744,7 @@ app.get('/__debug/rooms', (req, res) => {
   const sockets = Array.from(io.of('/').sockets.keys());
   res.json({ ok: true, rooms, sockets });
 });
+
 
 
 
