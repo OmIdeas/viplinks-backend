@@ -762,27 +762,14 @@ app.get('/api/stats', async (req, res) => {
 app.get('/__debug/ping', (req, res) => {
   const io = globalThis.VIP_IO;
   if (!io) return res.status(500).json({ ok: false, error: 'io not ready' });
-
   const userId = req.query.user;
   const payload = { type: 'debug.http', data: { at: Date.now(), from: 'http' } };
-
   if (userId) {
     io.to(`user:${userId}`).emit('db:event', payload);
   } else {
     io.to('admins').emit('db:event', payload);
   }
   res.json({ ok: true, sentTo: userId ? `user:${userId}` : 'admins' });
-});
-
-// ------------------------------
-// HTTP + Socket.IO
-// ------------------------------
-const server = http.createServer(app);
-const io = initRealtime(server);
-globalThis.VIP_IO = io;
-
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
 
 app.get('/__debug/pingAll', (req, res) => {
@@ -796,11 +783,30 @@ app.get('/__debug/pingAll', (req, res) => {
 app.get('/__debug/rooms', (req, res) => {
   const io = globalThis.VIP_IO;
   if (!io) return res.status(500).json({ ok: false, error: 'io not ready' });
+  const rooms   = Array.from(io.of('/').adapter.rooms.keys());
+  const sockets = Array.from(io.of('/').sockets.keys());
+  res.json({ ok: true, rooms, sockets });
+});
+
+// ------------------------------
+// HTTP + Socket.IO
+// ------------------------------
+const server = http.createServer(app);
+const io = initRealtime(server);
+globalThis.VIP_IO = io;
+
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`VipLinks API + Realtime listening on port ${PORT}`);
+});
+app.get('/__debug/rooms', (req, res) => {
+  const io = globalThis.VIP_IO;
+  if (!io) return res.status(500).json({ ok: false, error: 'io not ready' });
 
   const rooms   = Array.from(io.of('/').adapter.rooms.keys());
   const sockets = Array.from(io.of('/').sockets.keys());
   res.json({ ok: true, rooms, sockets });
 });
+
 
 
 
