@@ -589,25 +589,25 @@ app.post('/api/products', async (req, res) => {
   try {
     const { profile_id } = await getAuthenticatedUser(req);
 
-    const productData = {
-      seller_id: profile_id,
-      name: req.body.name,
-      description: req.body.description,
-      price: parseFloat(req.body.price),
-      type: req.body.category || 'gaming',
-      category: req.body.category || 'gaming',
-      delivery_method: 'rcon',
-      image_url: req.body.image || null,
-      status: req.body.status || 'active',
-      product_type: req.body.type,
-      duration: req.body.duration,
-      server_config: req.body.server || null,
-      delivery_commands: req.body.commands || null,
-      payment_methods: req.body.payment_methods || null,
-      visibility: 'private',
-      views: 0,
-      sales_count: 0
-    };
+const productData = {
+  seller_id: profile_id,
+  name: req.body.name,
+  description: req.body.description,
+  price: parseFloat(req.body.price),
+  type: req.body.category || 'gaming',
+  category: req.body.category || 'gaming',
+  delivery_method: 'rcon',
+  image_url: req.body.image || null,
+  status: req.body.status || 'active',
+  product_type: req.body.type,
+  // duration: req.body.duration,  // Comentado - columna no existe en DB
+  server_config: req.body.server || null,
+  delivery_commands: req.body.commands || null,
+  payment_methods: req.body.payment_methods || null,
+  visibility: 'private',
+  views: 0,
+  sales_count: 0
+};
 
     const { data: product, error } = await supabaseAdmin
       .from('products')
@@ -807,6 +807,7 @@ app.get('/__debug/rooms', (req, res) => {
   const sockets = Array.from(io.of('/').sockets.keys());
   res.json({ ok: true, rooms, sockets });
 });
+
 
 
 
