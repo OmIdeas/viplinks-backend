@@ -165,15 +165,11 @@ function calculateCommission(product) {
   let commissionRate = 0;
   
   if (product.type === 'gaming') {
-    // Gaming: 1.3%
     commissionRate = 0.013;
   } else {
-    // General: 7% base
     commissionRate = 0.07;
-    
-    // Si tiene garantía: +2% adicional
     if (product.has_guarantee) {
-      commissionRate += 0.02; // Total: 9%
+      commissionRate += 0.02;
     }
   }
   
@@ -393,7 +389,6 @@ app.post('/api/upload-image', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Missing file or fileName' });
     }
 
-    // Verificar autenticación
     const token = req.headers.authorization?.replace('Bearer ', '');
     if (!token) {
       return res.status(401).json({ success: false, error: 'Unauthorized' });
@@ -405,16 +400,15 @@ app.post('/api/upload-image', async (req, res) => {
       return res.status(401).json({ success: false, error: 'Invalid token' });
     }
 
-    // Convertir base64 a Buffer
     const base64Data = file.replace(/^data:image\/\w+;base64,/, '');
     const buffer = Buffer.from(base64Data, 'base64');
 
-    // Subir a Supabase Storage
     const { data, error } = await supabaseAdmin.storage
       .from('product-images')
       .upload(`products/${fileName}`, buffer, {
         contentType: 'image/jpeg',
-        upsert: false
+        upsert: true,
+        cacheControl: '3600'
       });
 
     if (error) {
@@ -422,7 +416,6 @@ app.post('/api/upload-image', async (req, res) => {
       return res.status(400).json({ success: false, error: error.message });
     }
 
-    // Obtener URL pública
     const { data: urlData } = supabaseAdmin.storage
       .from('product-images')
       .getPublicUrl(`products/${fileName}`);
@@ -677,7 +670,6 @@ app.post('/api/products', async (req, res) => {
     
     console.log('=== CREATING PRODUCT ===');
     console.log('User profile_id:', profile_id);
-    console.log('Request body:', JSON.stringify(req.body, null, 2));
 
     const productData = {
       seller_id: profile_id,
@@ -701,8 +693,6 @@ app.post('/api/products', async (req, res) => {
     };
 
     const fees = calculateCommission(productData);
-    console.log('Product fees:', fees);
-    console.log('Product data to insert:', JSON.stringify(productData, null, 2));
 
     const { data: product, error } = await supabaseAdmin
       .from('products')
@@ -711,21 +701,26 @@ app.post('/api/products', async (req, res) => {
       .single();
 
     if (error) {
-      console.error('❌ Supabase error:', error);
+      console.error('Supabase error:', error);
       throw error;
     }
 
-    console.log('✅ Product created successfully:', product.id);
+    console.log('Product created successfully:', product.id);
+    
+    const publicUrl = `https://viplinks.org/buy/${product.id}`;
     
     res.json({ 
       success: true, 
       product,
+      public_url: publicUrl,
+      url: publicUrl,
+      slug: product.id,
+      id: product.id,
       fees
     });
 
   } catch (error) {
-    console.error('❌ Error creating product:', error.message);
-    console.error('Full error:', error);
+    console.error('Error creating product:', error.message);
     res.status(400).json({ success: false, error: error.message });
   }
 });
