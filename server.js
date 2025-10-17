@@ -382,7 +382,7 @@ app.post('/api/auth/logout', (_req, res) => {
   return res.json({ success: true, message: 'Logged out successfully' });
 });
 
-/ ------------------------------
+// ------------------------------
 // Upload de imágenes a Supabase Storage
 // ------------------------------
 app.post('/api/upload-image', async (req, res) => {
@@ -684,6 +684,7 @@ app.post('/api/products', async (req, res) => {
       name: req.body.name,
       description: req.body.description,
       price: parseFloat(req.body.price),
+      currency: req.body.currency || 'USD',
       type: req.body.category || 'gaming',
       category: req.body.category || 'gaming',
       delivery_method: req.body.category === 'gaming' ? 'rcon' : 'manual',
@@ -696,11 +697,9 @@ app.post('/api/products', async (req, res) => {
       visibility: 'private',
       views: 0,
       sales_count: 0,
-      // ✅ NUEVO: Garantía solo para productos generales
       has_guarantee: req.body.category === 'general' && req.body.has_guarantee === true
     };
 
-    // Calcular y mostrar la comisión
     const fees = calculateCommission(productData);
     console.log('Product fees:', fees);
     console.log('Product data to insert:', JSON.stringify(productData, null, 2));
@@ -721,7 +720,7 @@ app.post('/api/products', async (req, res) => {
     res.json({ 
       success: true, 
       product,
-      fees // ← Enviar las comisiones al frontend
+      fees
     });
 
   } catch (error) {
@@ -906,17 +905,3 @@ globalThis.VIP_IO = io;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
