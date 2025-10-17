@@ -897,6 +897,54 @@ const server = http.createServer(app);
 const io = initRealtime(server);
 globalThis.VIP_IO = io;
 
+// ========================================
+// ENDPOINT PÚBLICO: GET PRODUCTO POR ID
+// ========================================
+app.get('/api/products/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    console.log('Buscando producto:', id);
+    
+    // Buscar producto en Supabase
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .eq('id', id)
+      .eq('status', 'active')
+      .single();
+
+    if (error || !data) {
+      console.log('Producto no encontrado:', error);
+      return res.status(404).json({ error: 'Producto no encontrado' });
+    }
+
+    // Devolver solo datos públicos (sin RCON password)
+    const publicData = {
+      id: data.id,
+      name: data.name,
+      description: data.description,
+      price: data.price,
+      currency: data.currency,
+      duration: data.duration,
+      type: data.type,
+      category: data.category,
+      image: data.image,
+      features: data.features,
+      slug: data.slug,
+      created_at: data.created_at
+    };
+
+    console.log('Producto encontrado:', publicData.name);
+    res.json(publicData);
+    
+  } catch (error) {
+    console.error('Error obteniendo producto:', error);
+    res.status(500).json({ error: 'Error del servidor' });
+  }
+});
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
