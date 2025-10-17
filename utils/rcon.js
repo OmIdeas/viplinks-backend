@@ -20,21 +20,17 @@ export async function validatePlayer(config, identifier) {
     await rcon.authenticate(config.password);
     console.log('✅ Conectado a RCON');
 
-    // Ejecutar comando 'status' para obtener lista de jugadores
     const response = await rcon.send('status');
     console.log('📋 Respuesta RCON:', response.substring(0, 200));
 
-    // Parsear la respuesta para buscar al jugador
     const isValid = response.includes(identifier);
     
     if (isValid) {
-      // Intentar extraer el nombre del jugador
       const lines = response.split('\n');
       let playerName = identifier;
       
       for (const line of lines) {
         if (line.includes(identifier)) {
-          // Intentar extraer el nombre (depende del formato del servidor)
           const match = line.match(/"([^"]+)"/);
           if (match) {
             playerName = match[1];
@@ -97,7 +93,6 @@ export async function executeDeliveryCommands(config, commands, variables) {
     console.log('✅ Conectado para ejecución');
 
     for (const command of commands) {
-      // Reemplazar variables en el comando
       let finalCommand = command;
       for (const [key, value] of Object.entries(variables)) {
         finalCommand = finalCommand.replace(new RegExp(`{${key}}`, 'g'), value);
@@ -110,7 +105,6 @@ export async function executeDeliveryCommands(config, commands, variables) {
         response: result
       });
       
-      // Esperar un poco entre comandos
       await new Promise(resolve => setTimeout(resolve, 500));
     }
 
@@ -141,7 +135,3 @@ export async function executeDeliveryCommands(config, commands, variables) {
     }
   }
 }
-```
-
-6. **Commit message:** `Create rcon.js utils`
-7. **Click:** "Commit changes"
