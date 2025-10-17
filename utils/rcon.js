@@ -1,16 +1,10 @@
 // utils/rcon.js
-const Rcon = require('rcon-srcds');
+import { Rcon } from 'rcon-client';
 
 /**
  * Valida si un jugador existe en el servidor
- * @param {Object} config - Configuración RCON
- * @param {string} config.ip - IP del servidor
- * @param {number} config.port - Puerto RCON
- * @param {string} config.password - Password RCON
- * @param {string} identifier - Steam ID o Username
- * @returns {Promise<Object>} - { valid: boolean, playerName?: string, error?: string }
  */
-async function validatePlayer(config, identifier) {
+export async function validatePlayer(config, identifier) {
   let rcon = null;
   
   try {
@@ -18,16 +12,16 @@ async function validatePlayer(config, identifier) {
     
     rcon = new Rcon({
       host: config.ip,
-      port: config.port,
-      password: config.password,
+      port: parseInt(config.port),
       timeout: 5000
     });
 
     await rcon.connect();
+    await rcon.authenticate(config.password);
     console.log('✅ Conectado a RCON');
 
     // Ejecutar comando 'status' para obtener lista de jugadores
-    const response = await rcon.execute('status');
+    const response = await rcon.send('status');
     console.log('📋 Respuesta RCON:', response.substring(0, 200));
 
     // Parsear la respuesta para buscar al jugador
@@ -73,7 +67,7 @@ async function validatePlayer(config, identifier) {
   } finally {
     if (rcon) {
       try {
-        await rcon.disconnect();
+        await rcon.end();
         console.log('🔌 Desconectado de RCON');
       } catch (e) {
         console.error('Error desconectando:', e);
@@ -84,12 +78,8 @@ async function validatePlayer(config, identifier) {
 
 /**
  * Ejecuta comandos RCON para entregar producto
- * @param {Object} config - Configuración RCON
- * @param {Array<string>} commands - Lista de comandos a ejecutar
- * @param {Object} variables - Variables para reemplazar en comandos
- * @returns {Promise<Object>} - { success: boolean, results: Array, error?: string }
  */
-async function executeCommands(config, commands, variables) {
+export async function executeDeliveryCommands(config, commands, variables) {
   let rcon = null;
   const results = [];
   
@@ -98,12 +88,12 @@ async function executeCommands(config, commands, variables) {
     
     rcon = new Rcon({
       host: config.ip,
-      port: config.port,
-      password: config.password,
+      port: parseInt(config.port),
       timeout: 5000
     });
 
     await rcon.connect();
+    await rcon.authenticate(config.password);
     console.log('✅ Conectado para ejecución');
 
     for (const command of commands) {
@@ -114,7 +104,7 @@ async function executeCommands(config, commands, variables) {
       }
       
       console.log(`▶️ Ejecutando: ${finalCommand}`);
-      const result = await rcon.execute(finalCommand);
+      const result = await rcon.send(finalCommand);
       results.push({
         command: finalCommand,
         response: result
@@ -143,7 +133,7 @@ async function executeCommands(config, commands, variables) {
   } finally {
     if (rcon) {
       try {
-        await rcon.disconnect();
+        await rcon.end();
         console.log('🔌 Desconectado');
       } catch (e) {
         console.error('Error desconectando:', e);
@@ -151,8 +141,7 @@ async function executeCommands(config, commands, variables) {
     }
   }
 }
+```
 
-module.exports = {
-  validatePlayer,
-  executeCommands
-};
+6. **Commit message:** `Create rcon.js utils`
+7. **Click:** "Commit changes"
