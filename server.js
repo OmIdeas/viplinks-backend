@@ -8,6 +8,7 @@ import nodemailer from 'nodemailer';
 import { Rcon } from 'rcon-client';
 import dashboardRouter from './routes/dashboard.js';
 import { requireAuth } from './middleware/auth.js';
+import { validatePlayer, executeDeliveryCommands } from './utils/rcon.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -36,6 +37,66 @@ const transporter = nodemailer.createTransport({
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
+// ========================================
+// VALIDAR JUGADOR (RCON)
+// ========================================
+app.post('/api/products/:id/validate-player', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { steam_id, username } = req.body;
+
+    const identifier = steam_id || username;
+    
+    if (!identifier) {
+      return res.status(400).json({ 
+        valid: false, 
+        error: 'Debes proporcionar Steam ID o Username' 
+      });
+    }
+
+    console.log(`🔍 Validando jugador: ${identifier} para producto ${id}`);
+
+    // Obtener datos del producto y servidor de la BD
+    const { data: product, error } = await supabaseAdmin
+      .from('products')
+      .select('server_config')
+      .eq('id', id)
+      .eq('status', 'active')
+      .single();
+
+    if (error || !product) {
+      return res.status(404).json({ 
+        valid: false, 
+        error: 'Producto no encontrado' 
+      });
+    }
+
+    if (!product.server_config || !product.server_config.ip) {
+      return res.status(400).json({ 
+        valid: false, 
+        error: 'Servidor no configurado para este producto' 
+      });
+    }
+
+    // Validar con RCON
+    const result = await validatePlayer({
+      ip: product.server_config.ip,
+      port: product.server_config.rcon_port,
+      password: product.server_config.rcon_password
+    }, identifier);
+
+    res.json(result);
+
+  } catch (error) {
+    console.error('Error en validación:', error);
+    res.status(500).json({ 
+      valid: false, 
+      error: 'Error del servidor',
+      details: error.message 
+    });
+  }
 });
 
 // ------------------------------
@@ -947,4 +1008,5 @@ app.get('/api/products/:id', async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
