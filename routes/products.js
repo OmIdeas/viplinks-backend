@@ -1,5 +1,29 @@
+// routes/products.js
+import express from 'express';
+import { supabaseAdmin } from '../supabase.js';
+import { requireAuth } from '../middleware/auth.js';
 import { encrypt } from '../utils/encryption.js';
-import { validatePlayer, executeDeliveryCommands } from '../utils/rcon.js';
+import { validatePlayer } from '../utils/rcon.js';
+
+const router = express.Router();
+
+// GET /api/products - Listar productos del usuario
+router.get('/', requireAuth, async (req, res) => {
+  try {
+    const { data: products, error } = await supabaseAdmin
+      .from('products')
+      .select('*')
+      .eq('user_id', req.user.id)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    res.json({ success: true, products });
+  } catch (error) {
+    console.error('Error fetching products:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 // POST /api/products - Crear producto con RCON
 router.post('/', requireAuth, async (req, res) => {
@@ -19,20 +43,16 @@ router.post('/', requireAuth, async (req, res) => {
     // Si tiene config RCON, probar conexión
     if (rconHost && rconPort && rconPassword) {
       try {
-        // Probar conexión básica ejecutando 'status'
-        const { validatePlayer } = await import('../utils/rcon.js');
-        
-        // Test básico de conexión (no valida jugador, solo conecta)
         const testConfig = {
           ip: rconHost,
           port: parseInt(rconPort),
           password: rconPassword
         };
 
-        // Usar validatePlayer con un ID dummy solo para probar conexión
-        const testResult = await validatePlayer(testConfig, 'test');
+        // Test de conexión
+        const testResult = await validatePlayer(testConfig, 'test_connection');
         
-        // Si hay error de conexión (no de jugador no encontrado), fallar
+        // Si hay error de conexión (no de jugador no encontrado)
         if (testResult.error && testResult.error.includes('conectar')) {
           return res.status(400).json({
             success: false,
@@ -40,10 +60,13 @@ router.post('/', requireAuth, async (req, res) => {
           });
         }
 
+        console.log('✅ RCON test exitoso');
+        
         // Encriptar password
         encryptedPassword = JSON.stringify(encrypt(rconPassword));
 
       } catch (testError) {
+        console.error('❌ RCON test error:', testError);
         return res.status(400).json({
           success: false,
           error: 'RCON test failed: ' + testError.message
@@ -86,3 +109,61 @@ router.post('/', requireAuth, async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+// GET /api/products/:id - Obtener producto específico
+router.get('/:id', async (req, res) => {
+  try {
+    const { data: product, error } = await supabaseAdmin
+      .from('products')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+
+    if (error) throw error;
+
+    res.json({ success: true, product });
+  } catch (error) {
+    console.error('Error fetching product:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// PUT /api/products/:id - Actualizar producto
+router.put('/:id', requireAuth, async (req, res) => {
+  try {
+    const { data: product, error } = await supabaseAdmin
+      .from('products')
+      .update(req.body)
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    res.json({ success: true, product });
+  } catch (error) {
+    console.error('Error updating product:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// DELETE /api/products/:id - Eliminar producto
+router.delete('/:id', requireAuth, async (req, res) => {
+  try {
+    const { error } = await supabaseAdmin
+      .from('products')
+      .delete()
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id);
+
+    if (error) throw error;
+
+    res.json({ success: true, message: 'Product deleted' });
+  } catch (error) {
+    console.error('Error deleting product:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+export default router;
