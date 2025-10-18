@@ -61,7 +61,7 @@ app.post('/api/products/:id/validate-player', async (req, res) => {
     // Obtener datos del producto y servidor de la BD
     const { data: product, error } = await supabaseAdmin
       .from('products')
-      .select('server_config, type, category') // ← AGREGAR type y category
+      .select('server_config, type, category')
       .eq('id', id)
       .eq('status', 'active')
       .single();
@@ -73,7 +73,6 @@ app.post('/api/products/:id/validate-player', async (req, res) => {
       });
     }
 
-    // ← AGREGAR ESTA VALIDACIÓN
     // Si NO es un producto gaming, no validar RCON
     if (product.type !== 'gaming' && product.category !== 'gaming') {
       return res.json({
@@ -743,31 +742,29 @@ app.post('/api/products', async (req, res) => {
     console.log('User profile_id:', profile_id);
 
     const productData = {
-     const productData = {
-  seller_id: profile_id,
-  name: req.body.name,
-  description: req.body.description,
-  price: parseFloat(req.body.price),
-  currency: req.body.currency || 'USD',
-  type: req.body.category || 'gaming',
-  category: req.body.category || 'gaming',
-  delivery_method: req.body.category === 'gaming' ? 'rcon' : 'manual',
-  image_url: req.body.image || null,
-  status: req.body.status || 'active',
-  product_type: req.body.type,
-  server_config: req.body.server || null,
-  delivery_commands: req.body.commands || null,
-  payment_methods: req.body.payment_methods || null,
-  visibility: 'private',
-  views: 0,
-  sales_count: 0,
-  has_guarantee: req.body.category === 'general' && req.body.has_guarantee === true,
-  // ← AGREGAR CAMPOS DE BRANDING
-  brand_name: req.body.brand_name || null,
-  brand_logo: req.body.brand_logo || null,
-  background_image: req.body.background_image || null,
-  brand_colors: req.body.brand_colors || null
-};
+      seller_id: profile_id,
+      name: req.body.name,
+      description: req.body.description,
+      price: parseFloat(req.body.price),
+      currency: req.body.currency || 'USD',
+      type: req.body.category || 'gaming',
+      category: req.body.category || 'gaming',
+      delivery_method: req.body.category === 'gaming' ? 'rcon' : 'manual',
+      image_url: req.body.image || null,
+      status: req.body.status || 'active',
+      product_type: req.body.type,
+      server_config: req.body.server || null,
+      delivery_commands: req.body.commands || null,
+      payment_methods: req.body.payment_methods || null,
+      visibility: 'private',
+      views: 0,
+      sales_count: 0,
+      has_guarantee: req.body.category === 'general' && req.body.has_guarantee === true,
+      brand_name: req.body.brand_name || null,
+      brand_logo: req.body.brand_logo || null,
+      background_image: req.body.background_image || null,
+      brand_colors: req.body.brand_colors || null
+    };
 
     const fees = calculateCommission(productData);
 
@@ -983,7 +980,6 @@ app.get('/api/products/:id', async (req, res) => {
     
     console.log('Buscando producto:', id);
     
-    // Buscar producto en Supabase
     const { data, error } = await supabase
       .from('products')
       .select('*')
@@ -996,7 +992,6 @@ app.get('/api/products/:id', async (req, res) => {
       return res.status(404).json({ error: 'Producto no encontrado' });
     }
 
-    // Devolver solo datos públicos (sin RCON password)
     const publicData = {
       id: data.id,
       name: data.name,
@@ -1009,7 +1004,12 @@ app.get('/api/products/:id', async (req, res) => {
       image: data.image,
       features: data.features,
       slug: data.slug,
-      created_at: data.created_at
+      created_at: data.created_at,
+      brand_name: data.brand_name,
+      brand_logo: data.brand_logo,
+      background_image: data.background_image,
+      brand_colors: data.brand_colors,
+      is_physical: data.is_physical || false
     };
 
     console.log('Producto encontrado:', publicData.name);
@@ -1024,7 +1024,3 @@ app.get('/api/products/:id', async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
-
-
-
-
