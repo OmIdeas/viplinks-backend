@@ -781,7 +781,7 @@ app.post('/api/products', async (req, res) => {
 
     console.log('Product created successfully:', product.id);
     
-    const publicUrl = `https://viplinks.org/buy/${product.id}`;
+    const publicUrl = `https://viplinks.org/app/buy.html?id=${product.id}`;
     
     res.json({ 
       success: true, 
@@ -1024,3 +1024,4 @@ app.get('/api/products/:id', async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
