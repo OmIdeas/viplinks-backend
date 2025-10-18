@@ -61,7 +61,7 @@ app.post('/api/products/:id/validate-player', async (req, res) => {
     // Obtener datos del producto y servidor de la BD
     const { data: product, error } = await supabaseAdmin
       .from('products')
-      .select('server_config')
+      .select('server_config, type, category') // ← AGREGAR type y category
       .eq('id', id)
       .eq('status', 'active')
       .single();
@@ -70,6 +70,16 @@ app.post('/api/products/:id/validate-player', async (req, res) => {
       return res.status(404).json({ 
         valid: false, 
         error: 'Producto no encontrado' 
+      });
+    }
+
+    // ← AGREGAR ESTA VALIDACIÓN
+    // Si NO es un producto gaming, no validar RCON
+    if (product.type !== 'gaming' && product.category !== 'gaming') {
+      return res.json({
+        valid: true,
+        message: 'Validación no requerida para este tipo de producto',
+        skip_validation: true
       });
     }
 
@@ -1008,5 +1018,6 @@ app.get('/api/products/:id', async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
 
