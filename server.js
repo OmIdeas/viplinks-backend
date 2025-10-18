@@ -9,6 +9,7 @@ import { Rcon } from 'rcon-client';
 import dashboardRouter from './routes/dashboard.js';
 import { requireAuth } from './middleware/auth.js';
 import { validatePlayer, executeDeliveryCommands } from './utils/rcon.js';
+import webhooksRoutes from './routes/webhooks.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -22,6 +23,7 @@ app.use(cors({
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
 app.use('/api/dashboard', requireAuth, dashboardRouter);
+app.use('/api/webhooks', webhooksRoutes);
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this';
 
@@ -1024,4 +1026,5 @@ app.get('/api/products/:id', async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
