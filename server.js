@@ -743,25 +743,31 @@ app.post('/api/products', async (req, res) => {
     console.log('User profile_id:', profile_id);
 
     const productData = {
-      seller_id: profile_id,
-      name: req.body.name,
-      description: req.body.description,
-      price: parseFloat(req.body.price),
-      currency: req.body.currency || 'USD',
-      type: req.body.category || 'gaming',
-      category: req.body.category || 'gaming',
-      delivery_method: req.body.category === 'gaming' ? 'rcon' : 'manual',
-      image_url: req.body.image || null,
-      status: req.body.status || 'active',
-      product_type: req.body.type,
-      server_config: req.body.server || null,
-      delivery_commands: req.body.commands || null,
-      payment_methods: req.body.payment_methods || null,
-      visibility: 'private',
-      views: 0,
-      sales_count: 0,
-      has_guarantee: req.body.category === 'general' && req.body.has_guarantee === true
-    };
+     const productData = {
+  seller_id: profile_id,
+  name: req.body.name,
+  description: req.body.description,
+  price: parseFloat(req.body.price),
+  currency: req.body.currency || 'USD',
+  type: req.body.category || 'gaming',
+  category: req.body.category || 'gaming',
+  delivery_method: req.body.category === 'gaming' ? 'rcon' : 'manual',
+  image_url: req.body.image || null,
+  status: req.body.status || 'active',
+  product_type: req.body.type,
+  server_config: req.body.server || null,
+  delivery_commands: req.body.commands || null,
+  payment_methods: req.body.payment_methods || null,
+  visibility: 'private',
+  views: 0,
+  sales_count: 0,
+  has_guarantee: req.body.category === 'general' && req.body.has_guarantee === true,
+  // ← AGREGAR CAMPOS DE BRANDING
+  brand_name: req.body.brand_name || null,
+  brand_logo: req.body.brand_logo || null,
+  background_image: req.body.background_image || null,
+  brand_colors: req.body.brand_colors || null
+};
 
     const fees = calculateCommission(productData);
 
@@ -1018,6 +1024,7 @@ app.get('/api/products/:id', async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
 
 
