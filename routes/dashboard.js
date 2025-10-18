@@ -32,7 +32,7 @@ router.get('/guarantees', async (req, res) => {
     const [{ data: products, error: pErr }, { data: sales, error: sErr }] = await Promise.all([
       supabaseAdmin
         .from('products')
-        .select('id,type,guarantee,has_guarantee,seller_id')
+        .select('id,type,seller_id')
         .eq('seller_id', uid),
       supabaseAdmin
         .from('sales')
