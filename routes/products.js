@@ -28,6 +28,20 @@ router.get('/', requireAuth, async (req, res) => {
 // POST /api/products - Crear producto con RCON
 router.post('/', requireAuth, async (req, res) => {
   try {
+    // ==========================================
+    // 🔍 LOGS DE DIAGNÓSTICO - INICIO
+    // ==========================================
+    console.log('📦 === DATOS RECIBIDOS EN BACKEND ===');
+    console.log('📋 Body completo:', JSON.stringify(req.body, null, 2));
+    console.log('🎮 rconHost:', req.body.rconHost);
+    console.log('🔌 rconPort:', req.body.rconPort);
+    console.log('🔑 rconPassword:', req.body.rconPassword ? '***EXISTE***' : 'undefined/null');
+    console.log('⚙️ commands:', req.body.commands);
+    console.log('📦 =====================================');
+    // ==========================================
+    // 🔍 LOGS DE DIAGNÓSTICO - FIN
+    // ==========================================
+
     const {
       name, description, price, currency, type, category, duration,
       image, status,
@@ -38,16 +52,25 @@ router.post('/', requireAuth, async (req, res) => {
       commands
     } = req.body;
 
+    console.log('📦 Después de destructuring:');
+    console.log('🎮 rconHost:', rconHost);
+    console.log('🔌 rconPort:', rconPort);
+    console.log('🔑 rconPassword:', rconPassword ? '***EXISTE***' : 'undefined/null');
+
     let encryptedPassword = null;
 
     // Si tiene config RCON, probar conexión
     if (rconHost && rconPort && rconPassword) {
+      console.log('✅ Tiene credenciales RCON, probando conexión...');
+      
       try {
         const testConfig = {
           ip: rconHost,
           port: parseInt(rconPort),
           password: rconPassword
         };
+
+        console.log('🧪 Test config:', { ip: testConfig.ip, port: testConfig.port, password: '***' });
 
         // Test de conexión
         const testResult = await validatePlayer(testConfig, 'test_connection');
@@ -72,7 +95,18 @@ router.post('/', requireAuth, async (req, res) => {
           error: 'RCON test failed: ' + testError.message
         });
       }
+    } else {
+      console.log('⚠️ NO tiene credenciales RCON completas');
+      console.log('   rconHost:', rconHost);
+      console.log('   rconPort:', rconPort);
+      console.log('   rconPassword:', rconPassword ? 'existe' : 'NO existe');
     }
+
+    console.log('💾 Guardando producto con:');
+    console.log('   rcon_host:', rconHost || null);
+    console.log('   rcon_port:', rconPort ? parseInt(rconPort) : null);
+    console.log('   rcon_password:', encryptedPassword ? 'ENCRIPTADO' : null);
+    console.log('   commands:', commands || []);
 
     // Crear producto
     const { data: product, error } = await supabaseAdmin
@@ -98,14 +132,17 @@ router.post('/', requireAuth, async (req, res) => {
 
     if (error) throw error;
 
+    console.log('✅ Producto creado exitosamente:', product.id);
+
     res.json({
       success: true,
       product,
-      public_url: `${process.env.FRONTEND_URL}/buy/${product.id}`
+      public_url: `${process.env.FRONTEND_URL}/buy/${product.id}`,
+      short_url: `${process.env.FRONTEND_URL}/p/${product.id.split('-')[0]}`
     });
 
   } catch (error) {
-    console.error('Error creating product:', error);
+    console.error('❌ Error creating product:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
