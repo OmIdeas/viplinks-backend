@@ -1,205 +1,253 @@
 // routes/products.js
 import express from 'express';
+import jwt from 'jsonwebtoken';
 import { supabaseAdmin } from '../supabase.js';
-import { requireAuth } from '../middleware/auth.js';
-import { encrypt } from '../utils/encryption.js';
-import { validatePlayer } from '../utils/rcon.js';
 
 const router = express.Router();
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this';
 
-// GET /api/products - Listar productos del usuario
-router.get('/', requireAuth, async (req, res) => {
+// ------------------------------
+// Helper: Obtener usuario autenticado
+// ------------------------------
+async function getAuthenticatedUser(req) {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) throw new Error('No token provided');
   try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    return { user: decoded, profile_id: decoded.id };
+  } catch {
+    throw new Error('Invalid token');
+  }
+}
+
+// ------------------------------
+// Helper: Calcular comisiones
+// ------------------------------
+function calculateCommission(product) {
+  const amount = parseFloat(product.price);
+  let commissionRate = 0;
+  
+  if (product.type === 'gaming') {
+    commissionRate = 0.013; // 1.3% para productos gaming
+  } else {
+    commissionRate = 0.07; // 7% para productos generales
+    if (product.has_guarantee) {
+      commissionRate += 0.02; // +2% si tiene garantía
+    }
+  }
+  
+  const commission = amount * commissionRate;
+  const seller_amount = amount - commission;
+  
+  return {
+    amount,
+    commission,
+    commission_rate: (commissionRate * 100).toFixed(1) + '%',
+    seller_amount
+  };
+}
+
+// ------------------------------
+// GET /api/products - Listar productos del usuario
+// ------------------------------
+router.get('/', async (req, res) => {
+  try {
+    console.log('🔍 GET /api/products - Listando productos');
+    
+    const { profile_id } = await getAuthenticatedUser(req);
+    
     const { data: products, error } = await supabaseAdmin
       .from('products')
       .select('*')
-      .eq('user_id', req.user.id)
+      .eq('seller_id', profile_id)
       .order('created_at', { ascending: false });
-
+      
     if (error) throw error;
 
-    res.json({ success: true, products });
+    // Adaptar productos al formato esperado por el frontend
+    const adaptedProducts = (products || []).map(product => ({
+      id: product.id,
+      name: product.name,
+      description: product.description,
+      price: parseFloat(product.price || 0),
+      category: product.type,
+      status: product.status,
+      deliveryMethod: product.delivery_method,
+      hasGuarantee: product.has_guarantee || false,
+      created_at: product.created_at,
+      image_url: product.image_url,
+      views: product.views || 0,
+      sales_count: product.sales_count || 0
+    }));
+
+    console.log(`✅ Retornando ${adaptedProducts.length} productos`);
+    res.json({ success: true, products: adaptedProducts });
+    
   } catch (error) {
-    console.error('Error fetching products:', error);
-    res.status(500).json({ success: false, error: error.message });
+    console.error('❌ Error fetching products:', error.message);
+    res.status(401).json({ success: false, error: error.message });
   }
 });
 
-// POST /api/products - Crear producto con RCON
-router.post('/', requireAuth, async (req, res) => {
+// ------------------------------
+// POST /api/products - Crear nuevo producto (gaming o general)
+// ------------------------------
+router.post('/', async (req, res) => {
   try {
-    // ==========================================
-    // 🔍 LOGS DE DIAGNÓSTICO - INICIO
-    // ==========================================
-    console.log('🚨🚨🚨 NUEVO CODIGO FUNCIONANDO 🚨🚨🚨');
-    console.log('📋 Body completo:', JSON.stringify(req.body, null, 2));
-    console.log('🎮 rconHost:', req.body.rconHost);
-    console.log('🔌 rconPort:', req.body.rconPort);
-    console.log('🔑 rconPassword:', req.body.rconPassword ? '***EXISTE***' : 'undefined/null');
-    console.log('⚙️ commands:', req.body.commands);
-    console.log('📦 =====================================');
-    // ==========================================
-    // 🔍 LOGS DE DIAGNÓSTICO - FIN
-    // ==========================================
+    console.log('🚀 POST /api/products - Creando producto');
+    console.log('📋 Body recibido:', JSON.stringify(req.body, null, 2));
+    
+    const { profile_id } = await getAuthenticatedUser(req);
+    console.log('👤 User profile_id:', profile_id);
 
-    const {
-      name, description, price, currency, type, category, duration,
-      image, status,
-      // RCON
-      rconHost,
-      rconPort,
-      rconPassword,
-      commands
-    } = req.body;
+    // Determinar tipo de producto
+    const category = req.body.category || 'gaming';
+    const isGaming = category === 'gaming';
 
-    console.log('📦 Después de destructuring:');
-    console.log('🎮 rconHost:', rconHost);
-    console.log('🔌 rconPort:', rconPort);
-    console.log('🔑 rconPassword:', rconPassword ? '***EXISTE***' : 'undefined/null');
+    console.log(`🎯 Tipo de producto: ${category} (${isGaming ? 'GAMING' : 'GENERAL'})`);
 
-    let encryptedPassword = null;
+    // Construir datos del producto
+    const productData = {
+      seller_id: profile_id,
+      name: req.body.name,
+      description: req.body.description,
+      price: parseFloat(req.body.price),
+      currency: req.body.currency || 'USD',
+      type: category,
+      category: category,
+      delivery_method: isGaming ? 'rcon' : 'manual',
+      image_url: req.body.image || null,
+      status: req.body.status || 'active',
+      product_type: req.body.type,
+      payment_methods: req.body.payment_methods || null,
+      visibility: 'private',
+      views: 0,
+      sales_count: 0,
+    };
 
-    // Si tiene config RCON, probar conexión
-    if (rconHost && rconPort && rconPassword) {
-      console.log('✅ Tiene credenciales RCON, probando conexión...');
+    // Campos específicos para productos GAMING
+    if (isGaming) {
+      console.log('🎮 Configurando producto GAMING');
+      productData.server_config = req.body.server || null;
+      productData.delivery_commands = req.body.commands || null;
       
-      try {
-        const testConfig = {
-          ip: rconHost,
-          port: parseInt(rconPort),
-          password: rconPassword
-        };
-
-        console.log('🧪 Test config:', { ip: testConfig.ip, port: testConfig.port, password: '***' });
-
-        // Test de conexión
-        const testResult = await validatePlayer(testConfig, 'test_connection');
-        
-        // Si hay error de conexión (no de jugador no encontrado)
-        if (testResult.error && testResult.error.includes('conectar')) {
-          return res.status(400).json({
-            success: false,
-            error: 'RCON connection failed: ' + testResult.message
-          });
-        }
-
-        console.log('✅ RCON test exitoso');
-        
-        // Encriptar password
-        encryptedPassword = JSON.stringify(encrypt(rconPassword));
-
-      } catch (testError) {
-        console.error('❌ RCON test error:', testError);
-        return res.status(400).json({
-          success: false,
-          error: 'RCON test failed: ' + testError.message
-        });
+      if (req.body.server) {
+        console.log('   ✅ Server config:', req.body.server);
       }
-    } else {
-      console.log('⚠️ NO tiene credenciales RCON completas');
-      console.log('   rconHost:', rconHost);
-      console.log('   rconPort:', rconPort);
-      console.log('   rconPassword:', rconPassword ? 'existe' : 'NO existe');
+      if (req.body.commands) {
+        console.log('   ✅ Commands:', req.body.commands);
+      }
     }
 
-    console.log('💾 Guardando producto con:');
-    console.log('   rcon_host:', rconHost || null);
-    console.log('   rcon_port:', rconPort ? parseInt(rconPort) : null);
-    console.log('   rcon_password:', encryptedPassword ? 'ENCRIPTADO' : null);
-    console.log('   commands:', commands || []);
+    // Campos específicos para productos GENERALES
+    if (!isGaming) {
+      console.log('📦 Configurando producto GENERAL');
+      productData.has_guarantee = req.body.has_guarantee === true;
+      productData.brand_name = req.body.brand_name || null;
+      productData.brand_logo = req.body.brand_logo || null;
+      productData.background_image = req.body.background_image || null;
+      productData.brand_colors = req.body.brand_colors || null;
+      
+      console.log('   ✅ Has guarantee:', productData.has_guarantee);
+      if (productData.brand_name) {
+        console.log('   ✅ Brand name:', productData.brand_name);
+      }
+    }
 
-    // Crear producto
+    // Calcular comisiones
+    const fees = calculateCommission(productData);
+    console.log('💰 Comisiones calculadas:', fees);
+
+    // Insertar producto en la base de datos
     const { data: product, error } = await supabaseAdmin
       .from('products')
-      .insert({
-        user_id: req.user.id,
-        name,
-        description,
-        price: parseFloat(price),
-        currency: currency || 'USD',
-        type: type || 'vip',
-        category: category || 'gaming',
-        duration: duration || 'permanent',
-        image_url: image,
-        status: status || 'active',
-        rcon_host: rconHost || null,
-        rcon_port: rconPort ? parseInt(rconPort) : null,
-        rcon_password: encryptedPassword,
-        commands: commands || []
-      })
+      .insert([productData])
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('❌ Supabase error:', error);
+      throw error;
+    }
 
     console.log('✅ Producto creado exitosamente:', product.id);
-
-    res.json({
-      success: true,
+    
+    const publicUrl = `https://viplinks.org/app/buy.html?id=${product.id}`;
+    
+    res.json({ 
+      success: true, 
       product,
-      public_url: `${process.env.FRONTEND_URL}/buy/${product.id}`,
-      short_url: `${process.env.FRONTEND_URL}/p/${product.id.split('-')[0]}`
+      public_url: publicUrl,
+      url: publicUrl,
+      slug: product.id,
+      id: product.id,
+      fees
     });
 
   } catch (error) {
-    console.error('❌ Error creating product:', error);
-    res.status(500).json({ success: false, error: error.message });
+    console.error('❌ Error creating product:', error.message);
+    res.status(400).json({ success: false, error: error.message });
   }
 });
 
-// GET /api/products/:id - Obtener producto específico
-router.get('/:id', async (req, res) => {
-  try {
-    const { data: product, error } = await supabaseAdmin
-      .from('products')
-      .select('*')
-      .eq('id', req.params.id)
-      .single();
-
-    if (error) throw error;
-
-    res.json({ success: true, product });
-  } catch (error) {
-    console.error('Error fetching product:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
+// ------------------------------
 // PUT /api/products/:id - Actualizar producto
-router.put('/:id', requireAuth, async (req, res) => {
+// ------------------------------
+router.put('/:id', async (req, res) => {
   try {
+    console.log(`🔄 PUT /api/products/${req.params.id} - Actualizando producto`);
+    
+    const { profile_id } = await getAuthenticatedUser(req);
+    const productId = req.params.id;
+
+    const updateData = { ...req.body, updated_at: new Date().toISOString() };
+    if (updateData.category) updateData.type = updateData.category;
+
+    console.log('📝 Datos de actualización:', updateData);
+
     const { data: product, error } = await supabaseAdmin
       .from('products')
-      .update(req.body)
-      .eq('id', req.params.id)
-      .eq('user_id', req.user.id)
+      .update(updateData)
+      .eq('id', productId)
+      .eq('seller_id', profile_id)
       .select()
       .single();
 
     if (error) throw error;
 
+    console.log('✅ Producto actualizado exitosamente');
     res.json({ success: true, product });
+    
   } catch (error) {
-    console.error('Error updating product:', error);
-    res.status(500).json({ success: false, error: error.message });
+    console.error('❌ Error updating product:', error.message);
+    res.status(400).json({ success: false, error: error.message });
   }
 });
 
+// ------------------------------
 // DELETE /api/products/:id - Eliminar producto
-router.delete('/:id', requireAuth, async (req, res) => {
+// ------------------------------
+router.delete('/:id', async (req, res) => {
   try {
+    console.log(`🗑️ DELETE /api/products/${req.params.id} - Eliminando producto`);
+    
+    const { profile_id } = await getAuthenticatedUser(req);
+    const productId = req.params.id;
+
     const { error } = await supabaseAdmin
       .from('products')
       .delete()
-      .eq('id', req.params.id)
-      .eq('user_id', req.user.id);
+      .eq('id', productId)
+      .eq('seller_id', profile_id);
 
     if (error) throw error;
 
-    res.json({ success: true, message: 'Product deleted' });
+    console.log('✅ Producto eliminado exitosamente');
+    res.json({ success: true, message: 'Product deleted successfully' });
+    
   } catch (error) {
-    console.error('Error deleting product:', error);
-    res.status(500).json({ success: false, error: error.message });
+    console.error('❌ Error deleting product:', error.message);
+    res.status(400).json({ success: false, error: error.message });
   }
 });
 
