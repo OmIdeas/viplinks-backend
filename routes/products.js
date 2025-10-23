@@ -31,7 +31,7 @@ router.post('/', requireAuth, async (req, res) => {
     // ==========================================
     // 🔍 LOGS DE DIAGNÓSTICO - INICIO
     // ==========================================
-    console.log('📦 === DATOS RECIBIDOS EN BACKEND ===');
+    console.log('🚨🚨🚨 NUEVO CODIGO FUNCIONANDO 🚨🚨🚨');
     console.log('📋 Body completo:', JSON.stringify(req.body, null, 2));
     console.log('🎮 rconHost:', req.body.rconHost);
     console.log('🔌 rconPort:', req.body.rconPort);
