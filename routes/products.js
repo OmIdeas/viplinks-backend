@@ -128,12 +128,31 @@ router.post('/', async (req, res) => {
     // Campos específicos para productos GAMING
     if (isGaming) {
       console.log('🎮 Configurando producto GAMING');
-      productData.server_config = req.body.server || null;
+      
+      // El frontend envía rconHost, rconPort, rconPassword
+      // Construir server_config a partir de estos campos
+      if (req.body.rconHost && req.body.rconPort && req.body.rconPassword) {
+        productData.server_config = {
+          ip: req.body.rconHost,
+          rcon_port: parseInt(req.body.rconPort),
+          rcon_password: req.body.rconPassword
+        };
+        console.log('   ✅ Server config:', { 
+          ip: req.body.rconHost, 
+          rcon_port: req.body.rconPort, 
+          rcon_password: '***' 
+        });
+      } else if (req.body.server) {
+        // Soporte para formato alternativo (server object directo)
+        productData.server_config = req.body.server;
+        console.log('   ✅ Server config (legacy):', req.body.server);
+      } else {
+        productData.server_config = null;
+        console.log('   ⚠️ NO se proporcionó server config');
+      }
+      
       productData.delivery_commands = req.body.commands || null;
       
-      if (req.body.server) {
-        console.log('   ✅ Server config:', req.body.server);
-      }
       if (req.body.commands) {
         console.log('   ✅ Commands:', req.body.commands);
       }
