@@ -1,9 +1,14 @@
+import express from 'express';
+import { supabaseAdmin } from '../supabase.js';
+
+const router = express.Router();
+
 // ========================================
 // BRANDS ROUTES - Multi-Branding System
 // ========================================
 
 // GET - Obtener todas las marcas del usuario
-app.get('/api/brands', async (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token) return res.status(401).json({ error: 'No autorizado' });
@@ -14,7 +19,7 @@ app.get('/api/brands', async (req, res) => {
     const { data: profile } = await supabaseAdmin
       .from('profiles')
       .select('id')
-      .eq('user_id', user.id)
+      .eq('id', user.id)
       .single();
 
     if (!profile) return res.status(404).json({ error: 'Perfil no encontrado' });
@@ -29,6 +34,7 @@ app.get('/api/brands', async (req, res) => {
 
     if (error) throw error;
 
+    console.log(`✅ Marcas obtenidas para: ${user.email} (${brands?.length || 0} marcas)`);
     res.json({ brands: brands || [] });
   } catch (error) {
     console.error('❌ Error obteniendo marcas:', error);
@@ -37,7 +43,7 @@ app.get('/api/brands', async (req, res) => {
 });
 
 // POST - Crear nueva marca
-app.post('/api/brands', async (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token) return res.status(401).json({ error: 'No autorizado' });
@@ -48,7 +54,7 @@ app.post('/api/brands', async (req, res) => {
     const { data: profile } = await supabaseAdmin
       .from('profiles')
       .select('id')
-      .eq('user_id', user.id)
+      .eq('id', user.id)
       .single();
 
     if (!profile) return res.status(404).json({ error: 'Perfil no encontrado' });
@@ -79,7 +85,7 @@ app.post('/api/brands', async (req, res) => {
     // Determinar si es la primera marca (gratis) o premium
     const isFirstBrand = existingBrands.length === 0;
     const is_default = isFirstBrand;
-    const is_premium = !isFirstBrand; // Marca 2 y 3 son premium
+    const is_premium = !isFirstBrand;
 
     const newBrand = {
       user_id: profile.id,
@@ -99,7 +105,7 @@ app.post('/api/brands', async (req, res) => {
 
     if (insertError) throw insertError;
 
-    console.log(`✅ Nueva marca creada: ${brand_name} (${is_premium ? 'Premium' : 'Gratis'})`);
+    console.log(`✅ Marca creada: ${brand_name} por ${user.email} (${is_premium ? 'Premium' : 'Gratis'})`);
 
     res.json({ 
       success: true, 
@@ -114,7 +120,7 @@ app.post('/api/brands', async (req, res) => {
 });
 
 // PUT - Actualizar marca existente
-app.put('/api/brands/:id', async (req, res) => {
+router.put('/:id', async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token) return res.status(401).json({ error: 'No autorizado' });
@@ -125,7 +131,7 @@ app.put('/api/brands/:id', async (req, res) => {
     const { data: profile } = await supabaseAdmin
       .from('profiles')
       .select('id')
-      .eq('user_id', user.id)
+      .eq('id', user.id)
       .single();
 
     if (!profile) return res.status(404).json({ error: 'Perfil no encontrado' });
@@ -163,7 +169,7 @@ app.put('/api/brands/:id', async (req, res) => {
 
     if (updateError) throw updateError;
 
-    console.log(`✅ Marca actualizada: ${updatedBrand.brand_name}`);
+    console.log(`✅ Marca actualizada: ${updatedBrand.brand_name} por ${user.email}`);
 
     res.json({ 
       success: true, 
@@ -178,7 +184,7 @@ app.put('/api/brands/:id', async (req, res) => {
 });
 
 // DELETE - Eliminar marca
-app.delete('/api/brands/:id', async (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token) return res.status(401).json({ error: 'No autorizado' });
@@ -189,7 +195,7 @@ app.delete('/api/brands/:id', async (req, res) => {
     const { data: profile } = await supabaseAdmin
       .from('profiles')
       .select('id')
-      .eq('user_id', user.id)
+      .eq('id', user.id)
       .single();
 
     if (!profile) return res.status(404).json({ error: 'Perfil no encontrado' });
@@ -224,7 +230,7 @@ app.delete('/api/brands/:id', async (req, res) => {
       }
     }
 
-    // Soft delete (marcar como inactiva en lugar de eliminar)
+    // Soft delete (marcar como inactiva)
     const { error: deleteError } = await supabaseAdmin
       .from('brands')
       .update({ active: false, updated_at: new Date().toISOString() })
@@ -233,7 +239,7 @@ app.delete('/api/brands/:id', async (req, res) => {
 
     if (deleteError) throw deleteError;
 
-    console.log(`✅ Marca eliminada: ${existingBrand.brand_name}`);
+    console.log(`✅ Marca eliminada: ${existingBrand.brand_name} por ${user.email}`);
 
     res.json({ 
       success: true,
@@ -245,3 +251,7 @@ app.delete('/api/brands/:id', async (req, res) => {
     res.status(500).json({ error: 'Error al eliminar marca' });
   }
 });
+
+export default router;
+
+
