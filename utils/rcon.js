@@ -25,16 +25,17 @@ export async function validatePlayer(config, identifier) {
       host: config.ip,
       port: parseInt(config.port),
       password: config.password,
-      timeout: 5000
+      timeout: 15000  // ← Aumentado a 15 segundos
     });
     
+    console.log('⏳ Estableciendo conexión...');
     await rcon.connect();
     console.log('✅ Conectado y autenticado a RCON');
 
     // Lista de comandos a probar según el juego
     const commands = [
-      'playerlist',      // Rust
-      'status',          // CS:GO, Garry's Mod, Source games
+      'status',          // CS:GO, Garry's Mod, Source games, Rust
+      'playerlist',      // Rust alternativo
       'listplayers',     // ARK, 7 Days to Die
       'list',            // Minecraft
       'players'          // Otros juegos
@@ -53,10 +54,18 @@ export async function validatePlayer(config, identifier) {
         if (response && response.length > 10) {
           workingCommand = cmd;
           console.log(`✅ Comando funcional: ${cmd}`);
+          console.log(`📏 Respuesta recibida: ${response.length} caracteres`);
           break;
+        } else {
+          console.log(`⚠️ Comando ${cmd} respondió pero sin contenido útil (${response?.length || 0} chars)`);
         }
       } catch (err) {
-        console.log(`❌ Comando ${cmd} falló, probando siguiente...`);
+        console.log(`❌ Comando ${cmd} falló: ${err.message}`);
+        // Si es timeout, intentar con el siguiente comando
+        if (err.message.includes('Timeout') || err.message.includes('timeout')) {
+          console.log(`⏱️ Timeout en comando ${cmd}, probando siguiente...`);
+          continue;
+        }
         continue;
       }
     }
@@ -160,7 +169,7 @@ export async function executeDeliveryCommands(config, commands, variables) {
       host: config.ip,
       port: parseInt(config.port),
       password: config.password,
-      timeout: 5000
+      timeout: 15000  // ← Aumentado a 15 segundos
     });
     
     await rcon.connect();
