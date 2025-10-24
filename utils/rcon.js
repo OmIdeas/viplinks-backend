@@ -24,13 +24,12 @@ export async function validatePlayer(config, identifier) {
     rcon = new Rcon({
       host: config.ip,
       port: parseInt(config.port),
+      password: config.password,
       timeout: 5000
     });
-    await rcon.connect();
     
-    console.log('🔐 Intentando autenticar con password:', config.password ? '***EXISTE***' : 'UNDEFINED');
-    await rcon.authenticate(config.password);
-    console.log('✅ Conectado a RCON');
+    await rcon.connect();
+    console.log('✅ Conectado y autenticado a RCON');
 
     // Lista de comandos a probar según el juego
     const commands = [
@@ -160,11 +159,12 @@ export async function executeDeliveryCommands(config, commands, variables) {
     rcon = new Rcon({
       host: config.ip,
       port: parseInt(config.port),
+      password: config.password,
       timeout: 5000
     });
+    
     await rcon.connect();
-    await rcon.authenticate(config.password);
-    console.log('✅ Conectado para ejecución');
+    console.log('✅ Conectado y autenticado para ejecución');
 
     for (const command of commands) {
       let finalCommand = command;
@@ -229,4 +229,3 @@ export async function executeDeliveryCommands(config, commands, variables) {
     }
   }
 }
-
