@@ -30,6 +30,16 @@ app.use('/api/webhooks', webhooksRoutes);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/products', productsRoutes); // ← USAR EL NUEVO ARCHIVO products.js
 
+// ====== RUTAS DE CHEQUEO RÁPIDO ======
+app.get('/', (_req, res) => {
+  res.send('✅ viplinks-backend: online');
+});
+
+// (Opcional) alias sin /api
+app.get('/health', (_req, res) => {
+  res.status(200).json({ status: 'ok', uptime: process.uptime() });
+});
+
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this';
 
 const transporter = nodemailer.createTransport({
@@ -1620,3 +1630,4 @@ app.get('/api/cron/process-deliveries', async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
