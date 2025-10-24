@@ -1,4 +1,3 @@
-
 // utils/rcon.js
 import { Rcon } from 'rcon-client';
 
@@ -10,6 +9,16 @@ export async function validatePlayer(config, identifier) {
   let rcon = null;
   
   try {
+    // 🔍 LOGS DE DIAGNÓSTICO - INICIO
+    console.log('🔍 validatePlayer - config recibido:', JSON.stringify({
+      ip: config.ip,
+      port: config.port,
+      password: config.password ? '***EXISTE***' : 'UNDEFINED/NULL'
+    }, null, 2));
+    console.log('🔑 Tipo de password:', typeof config.password);
+    console.log('🔑 Password value:', config.password);
+    // 🔍 LOGS DE DIAGNÓSTICO - FIN
+    
     console.log(`🔌 Conectando a RCON: ${config.ip}:${config.port}`);
     
     rcon = new Rcon({
@@ -18,6 +27,8 @@ export async function validatePlayer(config, identifier) {
       timeout: 5000
     });
     await rcon.connect();
+    
+    console.log('🔐 Intentando autenticar con password:', config.password ? '***EXISTE***' : 'UNDEFINED');
     await rcon.authenticate(config.password);
     console.log('✅ Conectado a RCON');
 
@@ -115,6 +126,7 @@ export async function validatePlayer(config, identifier) {
     }
   } catch (error) {
     console.error('❌ Error RCON:', error.message);
+    console.error('❌ Error stack:', error.stack);
     
     return {
       valid: false,
@@ -217,3 +229,4 @@ export async function executeDeliveryCommands(config, commands, variables) {
     }
   }
 }
+
