@@ -11,6 +11,7 @@ import { requireAuth } from './middleware/auth.js';
 import { validatePlayer, executeDeliveryCommands } from './utils/rcon.js';
 import productsRoutes from './routes/products.js';
 import webhooksRoutes from './routes/webhooks.js';
+import brandsRoutes from './routes/brands.js';
 import speakeasy from 'speakeasy';  // ← NUEVO: Para 2FA
 import QRCode from 'qrcode';        // ← NUEVO: Para generar QR de 2FA
 
@@ -28,6 +29,7 @@ app.use(express.urlencoded({ limit: '100mb', extended: true }));
 app.use('/api/dashboard', requireAuth, dashboardRouter);
 app.use('/api/webhooks', webhooksRoutes);
 app.use('/api/dashboard', dashboardRouter);
+app.use('/api/brands', brandsRoutes);
 app.use('/api/products', productsRoutes); // ← USAR EL NUEVO ARCHIVO products.js
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this';
@@ -1620,5 +1622,6 @@ app.get('/api/cron/process-deliveries', async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
 
