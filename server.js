@@ -94,6 +94,12 @@ app.post('/api/products/:id/validate-player', async (req, res) => {
       });
     }
 
+    // 🔍 LOGS DE DIAGNÓSTICO
+    console.log("📦 server_config completo:", JSON.stringify(product.server_config, null, 2));
+    console.log("🔑 rcon_password:", product.server_config.rcon_password ? "***EXISTE***" : "UNDEFINED/NULL");
+    console.log("🌐 ip:", product.server_config.ip);
+    console.log("🔌 rcon_port:", product.server_config.rcon_port);
+
     // Validar con RCON
     const result = await validatePlayer({
       ip: product.server_config.ip,
