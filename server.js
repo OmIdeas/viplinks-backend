@@ -11,6 +11,8 @@ import { requireAuth } from './middleware/auth.js';
 import { validatePlayer, executeDeliveryCommands } from './utils/rcon.js';
 import productsRoutes from './routes/products.js';
 import webhooksRoutes from './routes/webhooks.js';
+import speakeasy from 'speakeasy';  // ← NUEVO: Para 2FA
+import QRCode from 'qrcode';        // ← NUEVO: Para generar QR de 2FA
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -458,6 +460,377 @@ app.get('/api/auth/me', async (req, res) => {
 app.post('/api/auth/logout', (_req, res) => {
   return res.json({ success: true, message: 'Logged out successfully' });
 });
+
+// ========================================
+// 🆕 CAMBIAR CONTRASEÑA
+// ========================================
+app.post('/api/auth/change-password', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({ error: 'No autorizado' });
+
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+    if (authError || !user) return res.status(401).json({ error: 'Token inválido' });
+
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Faltan datos' });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres' });
+    }
+
+    // Verificar contraseña actual
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: user.email,
+      password: currentPassword
+    });
+
+    if (signInError) {
+      return res.status(400).json({ error: 'Contraseña actual incorrecta' });
+    }
+
+    // Actualizar contraseña
+    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
+      user.id,
+      { password: newPassword }
+    );
+
+    if (updateError) throw updateError;
+
+    console.log(`✅ Contraseña cambiada para: ${user.email}`);
+    res.json({ success: true, message: 'Contraseña actualizada' });
+
+  } catch (error) {
+    console.error('❌ Error cambiando contraseña:', error);
+    res.status(500).json({ error: 'Error al cambiar contraseña' });
+  }
+});
+
+// ========================================
+// 🆕 2FA: VERIFICAR ESTADO
+// ========================================
+app.get('/api/auth/2fa/status', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({ error: 'No autorizado' });
+
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+    if (authError || !user) return res.status(401).json({ error: 'Token inválido' });
+
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('two_factor_enabled')
+      .eq('user_id', user.id)
+      .single();
+
+    res.json({ enabled: profile?.two_factor_enabled || false });
+
+  } catch (error) {
+    console.error('❌ Error verificando 2FA:', error);
+    res.status(500).json({ error: 'Error verificando 2FA' });
+  }
+});
+
+// ========================================
+// 🆕 2FA: HABILITAR (generar QR)
+// ========================================
+app.post('/api/auth/2fa/enable', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({ error: 'No autorizado' });
+
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+    if (authError || !user) return res.status(401).json({ error: 'Token inválido' });
+
+    // Generar secret
+    const secret = speakeasy.generateSecret({
+      name: `VIPLinks (${user.email})`,
+      issuer: 'VIPLinks'
+    });
+
+    // Generar QR code
+    const qrCode = await QRCode.toDataURL(secret.otpauth_url);
+
+    // Guardar secret temporal (no activado aún)
+    await supabaseAdmin
+      .from('profiles')
+      .update({ 
+        two_factor_secret_temp: secret.base32 
+      })
+      .eq('user_id', user.id);
+
+    console.log(`✅ 2FA iniciado para: ${user.email}`);
+    res.json({
+      secret: secret.base32,
+      qrCode: qrCode
+    });
+
+  } catch (error) {
+    console.error('❌ Error generando 2FA:', error);
+    res.status(500).json({ error: 'Error generando 2FA' });
+  }
+});
+
+// ========================================
+// 🆕 2FA: VERIFICAR Y ACTIVAR
+// ========================================
+app.post('/api/auth/2fa/verify', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({ error: 'No autorizado' });
+
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+    if (authError || !user) return res.status(401).json({ error: 'Token inválido' });
+
+    const { code } = req.body;
+
+    if (!code || code.length !== 6) {
+      return res.status(400).json({ error: 'Código inválido' });
+    }
+
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('two_factor_secret_temp')
+      .eq('user_id', user.id)
+      .single();
+
+    if (!profile?.two_factor_secret_temp) {
+      return res.status(400).json({ error: 'No hay configuración 2FA pendiente' });
+    }
+
+    // Verificar código
+    const verified = speakeasy.totp.verify({
+      secret: profile.two_factor_secret_temp,
+      encoding: 'base32',
+      token: code,
+      window: 2
+    });
+
+    if (!verified) {
+      return res.status(400).json({ error: 'Código inválido' });
+    }
+
+    // Activar 2FA
+    await supabaseAdmin
+      .from('profiles')
+      .update({ 
+        two_factor_enabled: true,
+        two_factor_secret: profile.two_factor_secret_temp,
+        two_factor_secret_temp: null
+      })
+      .eq('user_id', user.id);
+
+    console.log(`✅ 2FA activado para: ${user.email}`);
+    res.json({ success: true, message: '2FA activado' });
+
+  } catch (error) {
+    console.error('❌ Error verificando 2FA:', error);
+    res.status(500).json({ error: 'Error verificando 2FA' });
+  }
+});
+
+// ========================================
+// 🆕 2FA: DESACTIVAR
+// ========================================
+app.post('/api/auth/2fa/disable', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({ error: 'No autorizado' });
+
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+    if (authError || !user) return res.status(401).json({ error: 'Token inválido' });
+
+    await supabaseAdmin
+      .from('profiles')
+      .update({ 
+        two_factor_enabled: false,
+        two_factor_secret: null,
+        two_factor_secret_temp: null
+      })
+      .eq('user_id', user.id);
+
+    console.log(`✅ 2FA desactivado para: ${user.email}`);
+    res.json({ success: true, message: '2FA desactivado' });
+
+  } catch (error) {
+    console.error('❌ Error desactivando 2FA:', error);
+    res.status(500).json({ error: 'Error desactivando 2FA' });
+  }
+});
+
+// ========================================
+// 🆕 PERFIL: ACTUALIZAR DATOS
+// ========================================
+app.put('/api/profile/update', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({ error: 'No autorizado' });
+
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+    if (authError || !user) return res.status(401).json({ error: 'Token inválido' });
+
+    const { username, fullname, phone, bio } = req.body;
+
+    const updates = {};
+    if (username) updates.username = username.trim();
+    if (fullname) updates.full_name = fullname.trim();
+    if (phone !== undefined) updates.phone = phone.trim();
+    if (bio !== undefined) updates.bio = bio.trim();
+
+    const { data: profile, error: updateError } = await supabaseAdmin
+      .from('profiles')
+      .update(updates)
+      .eq('user_id', user.id)
+      .select()
+      .single();
+
+    if (updateError) throw updateError;
+
+    console.log(`✅ Perfil actualizado: ${user.email}`);
+    res.json({ success: true, profile });
+
+  } catch (error) {
+    console.error('❌ Error actualizando perfil:', error);
+    res.status(500).json({ error: 'Error actualizando perfil' });
+  }
+});
+
+// ========================================
+// 🆕 ESTADÍSTICAS DEL USUARIO
+// ========================================
+app.get('/api/stats', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({ error: 'No autorizado' });
+
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+    if (authError || !user) return res.status(401).json({ error: 'Token inválido' });
+
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('id')
+      .eq('user_id', user.id)
+      .single();
+
+    if (!profile) return res.status(404).json({ error: 'Perfil no encontrado' });
+
+    // Contar productos
+    const { count: productsCount } = await supabaseAdmin
+      .from('products')
+      .select('id', { count: 'exact', head: true })
+      .eq('seller_id', profile.id);
+
+    // Calcular ventas totales
+    const { data: sales } = await supabaseAdmin
+      .from('sales')
+      .select('amount')
+      .eq('seller_id', profile.id)
+      .eq('status', 'completed');
+
+    const totalSales = sales?.reduce((sum, sale) => sum + (parseFloat(sale.amount) || 0), 0) || 0;
+
+    res.json({
+      stats: {
+        productsCount: productsCount || 0,
+        totalSales: totalSales
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error obteniendo stats:', error);
+    res.status(500).json({ error: 'Error obteniendo estadísticas' });
+  }
+});
+
+// ========================================
+// 🆕 FORMAS DE COBRO: OBTENER
+// ========================================
+app.get('/api/payment-methods', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({ error: 'No autorizado' });
+
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+    if (authError || !user) return res.status(401).json({ error: 'Token inválido' });
+
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('id, payment_method')
+      .eq('user_id', user.id)
+      .single();
+
+    if (!profile) return res.status(404).json({ error: 'Perfil no encontrado' });
+
+    res.json({ 
+      paymentMethod: profile.payment_method || null
+    });
+
+  } catch (error) {
+    console.error('❌ Error obteniendo formas de cobro:', error);
+    res.status(500).json({ error: 'Error obteniendo formas de cobro' });
+  }
+});
+
+// ========================================
+// 🆕 FORMAS DE COBRO: GUARDAR
+// ========================================
+app.post('/api/payment-methods', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({ error: 'No autorizado' });
+
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+    if (authError || !user) return res.status(401).json({ error: 'Token inválido' });
+
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('id')
+      .eq('user_id', user.id)
+      .single();
+
+    if (!profile) return res.status(404).json({ error: 'Perfil no encontrado' });
+
+    const { type, cbu, alias, holder, cuil, email } = req.body;
+
+    if (!type) {
+      return res.status(400).json({ error: 'Tipo de pago requerido' });
+    }
+
+    let paymentMethod = { type };
+
+    if (type === 'cbu') {
+      if (!cbu && !alias) {
+        return res.status(400).json({ error: 'Debes proporcionar CBU o Alias' });
+      }
+      paymentMethod = { type, cbu, alias, holder, cuil };
+    } else if (type === 'paypal') {
+      if (!email) {
+        return res.status(400).json({ error: 'Email de PayPal requerido' });
+      }
+      paymentMethod = { type, email };
+    }
+
+    await supabaseAdmin
+      .from('profiles')
+      .update({ payment_method: paymentMethod })
+      .eq('id', profile.id);
+
+    console.log(`✅ Forma de cobro guardada para: ${user.email} (${type})`);
+    res.json({ 
+      success: true, 
+      message: 'Forma de cobro guardada',
+      paymentMethod
+    });
+
+  } catch (error) {
+    console.error('❌ Error guardando forma de cobro:', error);
+    res.status(500).json({ error: 'Error guardando forma de cobro' });
+  }
+});
+
 
 // ------------------------------
 // Upload de imágenes a Supabase Storage
@@ -1247,4 +1620,3 @@ app.get('/api/cron/process-deliveries', async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
-
