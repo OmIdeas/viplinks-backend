@@ -43,7 +43,7 @@ router.post('/mercadopago', async (req, res) => {
     }
 
     // Verificar que tenga RCON configurado
-    if (!product.rcon_host || !product.rcon_password || !product.commands) {
+    if (!product.rcon_host || !product.rcon_password || !product.delivery_commands) {
       console.log('Producto sin RCON configurado');
       return res.sendStatus(200);
     }
@@ -76,7 +76,7 @@ router.post('/mercadopago', async (req, res) => {
     try {
       const result = await executeDeliveryCommands(
         rconConfig,
-        product.commands,
+        product.delivery_commands,
         variables
       );
       
@@ -117,7 +117,7 @@ router.post('/mercadopago', async (req, res) => {
             product_id: product.id,
             seller_id: product.seller_id,
             steam_id: purchase.buyer_steam_id || 'UNKNOWN',
-            commands: product.commands || [],
+            commands: product.delivery_commands || [],
             server_config: {
               ip: product.rcon_host,
               port: product.rcon_port,
@@ -177,6 +177,5 @@ router.post('/mercadopago', async (req, res) => {
 });
 
 export default router;
-
 
 
