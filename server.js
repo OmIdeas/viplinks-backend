@@ -1725,7 +1725,7 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
         console.log('🎮 Intentando entrega RCON...');
 
         const serverConfig = product.server_config;
-        const commands = product.commands || [];
+        const commands = product.delivery_commands || [];
 
         if (!serverConfig.ip || !serverConfig.rcon_port || !serverConfig.rcon_password) {
           throw new Error('Configuración de servidor incompleta');
