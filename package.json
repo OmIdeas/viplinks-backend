@@ -4,7 +4,9 @@
   "description": "Backend API para VipLinks",
   "main": "server.js",
   "type": "module",
-  "engines": { "node": "20.x" },
+  "engines": {
+    "node": "20.x"
+  },
   "scripts": {
     "start": "node server.js",
     "cleanup": "node cleanup-users.js"
@@ -19,12 +21,11 @@
     "nodemailer": "^6.9.0",
     "socket.io": "^4.7.5",
     "pg": "^8.11.5",
-    "rcon-client": "^4.2.3",
+    "modern-rcon": "^1.2.0",
     "speakeasy": "^2.0.0",
     "qrcode": "^1.5.3"
   }
 }
-
 
 
 
