@@ -1670,22 +1670,23 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
 
     console.log('📦 Producto encontrado:', product.title);
 
-    // 2. Crear venta falsa
+    // 2. Crear venta de prueba - USANDO LAS COLUMNAS CORRECTAS
     const { data: sale, error: saleError } = await supabaseAdmin
       .from('sales')
       .insert({
         product_id: productId,
-        buyer_email: 'test@testing.com',
+        seller_id: product.user_id,
+        buyer_email: `test_${steamId}@testing.com`,
         buyer_steam_id: steamId,
         buyer_username: username,
         amount: product.price,
-        currency: product.currency || 'USD',
-        status: 'completed',
-        payment_status: 'approved',
-        payment_method: 'TEST_MODE',
+        currency: product.currency || 'ARS',
         payment_id: `TEST_${Date.now()}`,
-        seller_id: product.user_id,
-        delivery_status: 'pending'
+        payment_met: 'TEST_MODE',
+        status: 'completed',
+        delivery_status: 'pending',
+        kit_delivered: false,
+        product_type: product.type || 'gaming'
       })
       .select()
       .single();
@@ -1729,7 +1730,9 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
           await supabaseAdmin
             .from('sales')
             .update({ 
-              delivery_status: 'delivered',
+              status: 'completed',
+              kit_delivered: true,
+              delivery_status: 'completed',
               delivered_at: new Date().toISOString()
             })
             .eq('id', sale.id);
@@ -1750,8 +1753,10 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
         await supabaseAdmin
           .from('sales')
           .update({ 
+            status: 'failed',
             delivery_status: 'failed',
-            notes: `Error RCON: ${rconError.message}`
+            error_message: rconError.message,
+            notes: `Error RCON de prueba: ${rconError.message}`
           })
           .eq('id', sale.id);
 
@@ -1782,3 +1787,5 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
+
