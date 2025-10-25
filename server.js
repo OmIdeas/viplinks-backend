@@ -1731,8 +1731,17 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
 
         console.log('🔌 Conectando a:', serverConfig.ip + ':' + serverConfig.rcon_port);
 
+        // Normalizar serverConfig para executeDeliveryCommands
+        const rconConfig = {
+          ip: serverConfig.ip,
+          port: parseInt(serverConfig.rcon_port),
+          password: serverConfig.rcon_password
+        };
+
+        console.log('🔧 RCON Config:', { ip: rconConfig.ip, port: rconConfig.port, password: '***' });
+
         const deliveryResult = await executeDeliveryCommands(
-          serverConfig,
+          rconConfig,
           commands,
           {
             steamid: steamId,
@@ -1806,5 +1815,3 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
-
-
