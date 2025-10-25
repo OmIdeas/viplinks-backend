@@ -1408,6 +1408,36 @@ app.get('/api/products/:id', async (req, res) => {
 });
 
 // ========================================
+// SHORT LINKS - Resolver códigos cortos
+// ========================================
+app.get('/api/short/:code', async (req, res) => {
+  try {
+    const { code } = req.params;
+
+    const { data: link, error } = await supabaseAdmin
+      .from('short_links')
+      .select('product_id')
+      .eq('short_code', code)
+      .single();
+
+    if (error || !link) {
+      return res.status(404).json({ error: 'Link no encontrado' });
+    }
+
+    // Incrementar clicks
+    await supabaseAdmin
+      .from('short_links')
+      .update({ clicks: supabaseAdmin.raw('clicks + 1') })
+      .eq('short_code', code);
+
+    res.json({ product_id: link.product_id });
+  } catch (error) {
+    console.error('❌ Error resolviendo short link:', error);
+    res.status(500).json({ error: 'Error del servidor' });
+  }
+});
+
+// ========================================
 // ENDPOINT CRON: PROCESAR ENTREGAS PENDIENTES
 // ========================================
 app.get('/api/cron/process-deliveries', async (req, res) => {
@@ -1622,6 +1652,7 @@ app.get('/api/cron/process-deliveries', async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
 
 
