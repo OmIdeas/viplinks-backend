@@ -1668,7 +1668,9 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
       return res.status(404).json({ error: 'Producto no encontrado' });
     }
 
-    console.log('📦 Producto encontrado:', product.title);
+    console.log('📦 Producto encontrado:', product.name || product.title);
+    console.log('🔍 DEBUG - Producto completo:', JSON.stringify(product, null, 2));
+    console.log('📋 Comandos encontrados:', product.commands);
 
     // Calcular comisión según tipo de producto
     const isGaming = product.type === 'gaming' || product.category === 'gaming';
@@ -1739,6 +1741,7 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
         };
 
         console.log('🔧 RCON Config:', { ip: rconConfig.ip, port: rconConfig.port, password: '***' });
+        console.log('📝 Comandos a ejecutar:', commands.length, 'comando(s):', commands);
 
         const deliveryResult = await executeDeliveryCommands(
           rconConfig,
@@ -1815,3 +1818,4 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
