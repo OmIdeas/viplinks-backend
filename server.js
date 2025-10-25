@@ -1670,6 +1670,23 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
 
     console.log('📦 Producto encontrado:', product.title);
 
+    // Calcular comisión según tipo de producto
+    const isGaming = product.type === 'gaming' || product.category === 'gaming';
+    let commissionRate = 0;
+    
+    if (isGaming) {
+      commissionRate = 0.013; // 1.3% para gaming
+    } else {
+      // Para productos generales, revisar si tiene garantía
+      // Por ahora usamos 7% por defecto
+      commissionRate = 0.07; // 7% para generales
+    }
+    
+    const commission = product.price * commissionRate;
+    const sellerAmount = product.price - commission;
+
+    console.log(`💰 Precio: $${product.price} | Comisión (${commissionRate * 100}%): $${commission.toFixed(2)} | Vendedor: $${sellerAmount.toFixed(2)}`);
+
     // 2. Crear venta de prueba - USANDO LAS COLUMNAS CORRECTAS
     const { data: sale, error: saleError } = await supabaseAdmin
       .from('sales')
@@ -1680,6 +1697,8 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
         buyer_steam_id: steamId,
         buyer_username: username,
         amount: product.price,
+        commission: commission,
+        seller_amount: sellerAmount,
         currency: product.currency || 'ARS',
         payment_id: `TEST_${Date.now()}`,
         payment_method: 'TEST_MODE',
@@ -1787,3 +1806,5 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
+
