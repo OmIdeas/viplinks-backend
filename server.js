@@ -1682,7 +1682,7 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
         amount: product.price,
         currency: product.currency || 'ARS',
         payment_id: `TEST_${Date.now()}`,
-        payment_met: 'TEST_MODE',
+        payment_method: 'TEST_MODE',
         status: 'completed',
         delivery_status: 'pending',
         kit_delivered: false,
@@ -1787,5 +1787,3 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
-
-
