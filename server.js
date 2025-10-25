@@ -1648,11 +1648,137 @@ app.get('/api/cron/process-deliveries', async (req, res) => {
   }
 });
 
+// ============================================
+// 🧪 ENDPOINT DE TESTING - SIMULAR COMPRA
+// ============================================
+app.post('/api/test/simulate-purchase', async (req, res) => {
+  try {
+    const { productId, steamId, username } = req.body;
+
+    console.log('🧪 TESTING - Simulando compra:', { productId, steamId, username });
+
+    // 1. Obtener datos del producto
+    const { data: product, error: productError } = await supabaseAdmin
+      .from('products')
+      .select('*')
+      .eq('id', productId)
+      .single();
+
+    if (productError || !product) {
+      return res.status(404).json({ error: 'Producto no encontrado' });
+    }
+
+    console.log('📦 Producto encontrado:', product.title);
+
+    // 2. Crear venta falsa
+    const { data: sale, error: saleError } = await supabaseAdmin
+      .from('sales')
+      .insert({
+        product_id: productId,
+        buyer_email: 'test@testing.com',
+        buyer_steam_id: steamId,
+        buyer_username: username,
+        amount: product.price,
+        currency: product.currency || 'USD',
+        status: 'completed',
+        payment_status: 'approved',
+        payment_method: 'TEST_MODE',
+        payment_id: `TEST_${Date.now()}`,
+        seller_id: product.user_id,
+        delivery_status: 'pending'
+      })
+      .select()
+      .single();
+
+    if (saleError) {
+      console.error('❌ Error creando venta:', saleError);
+      return res.status(500).json({ error: 'Error creando orden de prueba', details: saleError });
+    }
+
+    console.log('✅ Venta creada:', sale.id);
+
+    // 3. Intentar entrega RCON (si es gaming)
+    if (product.type === 'gaming' && product.server_config) {
+      try {
+        console.log('🎮 Intentando entrega RCON...');
+
+        const serverConfig = product.server_config;
+        const commands = product.commands || [];
+
+        if (!serverConfig.ip || !serverConfig.rcon_port || !serverConfig.rcon_password) {
+          throw new Error('Configuración de servidor incompleta');
+        }
+
+        console.log('🔌 Conectando a:', serverConfig.ip + ':' + serverConfig.rcon_port);
+
+        const deliveryResult = await executeDeliveryCommands(
+          serverConfig,
+          commands,
+          {
+            steamid: steamId,
+            username: username,
+            email: 'test@testing.com',
+            orderid: sale.id,
+            player: steamId
+          }
+        );
+
+        if (deliveryResult.success) {
+          console.log('✅ Entrega RCON exitosa');
+
+          await supabaseAdmin
+            .from('sales')
+            .update({ 
+              delivery_status: 'delivered',
+              delivered_at: new Date().toISOString()
+            })
+            .eq('id', sale.id);
+
+          return res.json({
+            success: true,
+            message: '✅ COMPRA SIMULADA Y ENTREGADA EXITOSAMENTE',
+            sale: sale,
+            delivery: deliveryResult
+          });
+        } else {
+          throw new Error(deliveryResult.message || deliveryResult.error || 'Error en entrega');
+        }
+
+      } catch (rconError) {
+        console.error('❌ Error RCON:', rconError.message);
+
+        await supabaseAdmin
+          .from('sales')
+          .update({ 
+            delivery_status: 'failed',
+            notes: `Error RCON: ${rconError.message}`
+          })
+          .eq('id', sale.id);
+
+        return res.json({
+          success: true,
+          message: '⚠️ Venta creada pero entrega RCON falló',
+          sale: sale,
+          error: rconError.message
+        });
+      }
+    }
+
+    // 4. Si no es gaming o no tiene RCON
+    console.log('✅ Producto no requiere entrega RCON');
+    return res.json({
+      success: true,
+      message: '✅ COMPRA SIMULADA (Producto sin RCON)',
+      sale: sale
+    });
+
+  } catch (error) {
+    console.error('❌ Error en simulación de compra:', error);
+    res.status(500).json({ error: 'Error en simulación', details: error.message });
+  }
+});
+
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
-
-
-
-
