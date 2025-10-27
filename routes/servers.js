@@ -6,7 +6,6 @@ import { supabaseAdmin } from '../supabase.js';
 import { JWT_SECRET } from '../config.js'; //
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this';
 
 // ------------------------------
 // Helper: Obtener usuario autenticado
