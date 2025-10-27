@@ -1,33 +1,31 @@
-// middleware/auth.js
 import jwt from 'jsonwebtoken';
+// 1. IMPORTAMOS EL SECRETO COMPARTIDO
+import { JWT_SECRET } from '../config.js'; 
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this';
+// 2. ELIMINAMOS CUALQUIER SECRETO ANTIGUO QUE ESTUVIERA AQUÍ
+// const JWT_SECRET = process.env.JWT_SECRET || '...'; // <--- BORRADO
 
 export function requireAuth(req, res, next) {
-  const hdr = req.headers.authorization || '';
-  if (!hdr.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'MISSING_BEARER_TOKEN' });
+  const token = req.headers.authorization?.replace('Bearer ', '');
+
+  if (!token) {
+    return res.status(401).json({ error: 'No token provided' });
   }
 
-  const token = hdr.slice(7).trim();
-  if (!token) return res.status(401).json({ error: 'EMPTY_TOKEN' });
-
   try {
-    const payload = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
-    const id = payload.id || payload.sub;
-    if (!id) return res.status(401).json({ error: 'TOKEN_WITHOUT_ID' });
+    // 3. Usamos el secreto importado para verificar
+    const decoded = jwt.verify(token, JWT_SECRET); 
+    
+    // Adjuntamos los datos decodificados (id, email, etc.) al request
+    // para que las rutas (como /api/servers) puedan usarlo.
+    req.user = decoded; 
+    
+    // Súper importante: Adjuntamos el ID del perfil para que las rutas lo usen
+    req.profile_id = decoded.id; 
 
-    req.user = {
-      id,
-      email: payload.email || null,
-      name:  payload.name  || payload.username || null,
-    };
-
-    return next();
-  } catch (err) {
-    if (err.name === 'TokenExpiredError') {
-      return res.status(401).json({ error: 'TOKEN_EXPIRED' });
-    }
-    return res.status(401).json({ error: 'INVALID_TOKEN' });
+    next(); // El token es válido, continuar
+  } catch (error) {
+    console.error('Error de autenticación:', error.message);
+    return res.status(401).json({ error: 'Invalid token' });
   }
 }
