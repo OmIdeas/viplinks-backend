@@ -640,7 +640,7 @@ app.post('/api/rcon/test', async (req, res) => {
     const serverName = response.match(/hostname:\s*(.+)/i)?.[1]?.trim() || 
                       response.match(/server\s+name:\s*(.+)/i)?.[1]?.trim() ||
                       'Servidor conectado exitosamente';
-   D 
+    
     res.json({ 
       success: true,
       server_info: serverName,
@@ -676,7 +676,7 @@ app.post('/api/rcon/execute', async (req, res) => {
     });
   }
 
-  const rcon = new Rcon({D 
+  const rcon = new Rcon({
     host: ip, 
     port: parseInt(port),
     timeout: 5000 
@@ -702,14 +702,14 @@ app.post('/api/rcon/execute', async (req, res) => {
         const response = await rcon.send(processedCmd);
         results.push({ 
           command: processedCmd, 
-          success: true,D 
+          success: true,
           response: response || 'Comando ejecutado correctamente'
         });
         
       } catch (err) {
         results.push({ 
           command: cmd, 
-          success: false,t 
+          success: false,
           error: err.message 
         });
       }
@@ -734,7 +734,7 @@ app.post('/api/rcon/execute', async (req, res) => {
 });
 
 app.post('/api/rcon/test-execute', async (req, res) => {
-ar   try {
+  try {
     await getAuthenticatedUser(req);
 
     const { ip, port, password, commands, test_steamid, test_username, test_email } = req.body;
@@ -768,28 +768,28 @@ ar   try {
       try {
         const processedCmd = cmd
           .replace(/{steamid}/g, buyer_info.steamid)
-s           .replace(/{username}/g, buyer_info.username)
+          .replace(/{username}/g, buyer_info.username)
           .replace(/{email}/g, buyer_info.email)
           .replace(/{orderid}/g, buyer_info.orderid);
 
         const response = await rcon.send(processedCmd);
         results.push({ 
           command: processedCmd, 
-          success: true,s 
-    M       response: response || 'Comando ejecutado correctamente'
+          success: true,
+          response: response || 'Comando ejecutado correctamente'
         });
         
       } catch (err) {
         results.push({ 
           command: cmd, 
-          success: false,s 
+          success: false,
           error: err.message 
         });
       }
-s   }
+    }
 
     await rcon.end();
-Read   
+    
     res.json({ 
       success: true,
       message: 'Comandos de prueba ejecutados',
@@ -797,11 +797,11 @@ Read   
       results: results,
       executed_count: results.filter(r => r.success).length,
       failed_count: results.filter(r => !r.success).length
-ar   });
+    });
     
   } catch (error) {
     console.error('RCON Test Execute Error:', error);
-all     res.json({ 
+    res.json({ 
       success: false, 
       error: error.message 
     });
@@ -825,7 +825,7 @@ app.get('/api/dashboard/stats', async (req, res) => {
       .from('sales')
       .select('*')
       .eq('seller_id', profile_id);
-Indented     if (salesError) throw salesError;
+    if (salesError) throw salesError;
 
     const completedSales = (sales || []).filter(sale => sale.status === 'completed');
     const pendingSales = (sales || []).filter(sale => sale.status === 'pending');
@@ -835,7 +835,7 @@ Indented     if (salesError) throw salesError;
 
     const gamingProducts = (products || []).filter(p => p.type === 'gaming').length;
     const generalProducts = (products || []).filter(p => p.type === 'general').length;
-i     const invitationProducts = (products || []).filter(p => p.type === 'invitation').length;
+    const invitationProducts = (products || []).filter(p => p.type === 'invitation').length;
     const cardProducts = (products || []).filter(p => p.type === 'card').length;
 
     const gamingSales = completedSales.filter(sale => {
@@ -844,7 +844,7 @@ i     const invitationProducts = (products || []).filter(p => p.type === 'invi
     });
     const generalSales = completedSales.filter(sale => {
       const product = (products || []).find(p => p.id === sale.product_id);
-ar       return product && product.type === 'general';
+      return product && product.type === 'general';
     });
 
     const gamingCommission = gamingSales.length > 0
@@ -853,7 +853,7 @@ ar       return product && product.type === 'general';
       : 1.3;
 
     const productsCommission = generalSales.length > 0
-    A   ? (generalSales.reduce((sum, sale) => sum + parseFloat(sale.commission || 0), 0) / 
+      ? (generalSales.reduce((sum, sale) => sum + parseFloat(sale.commission || 0), 0) / 
          generalSales.reduce((sum, sale) => sum + parseFloat(sale.amount || 0), 0)) * 100
       : 7.0;
 
@@ -866,7 +866,7 @@ ar       return product && product.type === 'general';
 
     const oneMonthAgo = new Date(); oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
     const currentMonthSales = completedSales.filter(sale => new Date(sale.created_at) > oneMonthAgo);
-ar     const salesGrowth = currentMonthSales.length > 0 && completedSales.length > currentMonthSales.length
+    const salesGrowth = currentMonthSales.length > 0 && completedSales.length > currentMonthSales.length
       ? ((currentMonthSales.length / (completedSales.length - currentMonthSales.length)) * 100).toFixed(1)
       : 0;
 
@@ -895,7 +895,7 @@ ar     const salesGrowth = currentMonthSales.length > 0 && completedSales.leng
     res.json({ success: true, stats });
   } catch (error) {
     res.status(401).json({ success: false, error: error.message });
-s }
+  }
 });
 
 // ------------------------------
@@ -909,7 +909,7 @@ app.get('/__debug/ping', (req, res) => {
   if (userId) {
     io.to(`user:${userId}`).emit('db:event', payload);
   } else {
-ar     io.to('admins').emit('db:event', payload);
+    io.to('admins').emit('db:event', payload);
   }
   res.json({ ok: true, sentTo: userId ? `user:${userId}` : 'admins' });
 });
@@ -941,7 +941,7 @@ globalThis.VIP_IO = io;
 // ENDPOINT PÚBLICO: GET PRODUCTO POR ID
 // ========================================
 app.get('/api/products/:id', async (req, res) => {
-s   try {
+  try {
     const { id } = req.params;
     
     console.log('Buscando producto:', id);
@@ -953,7 +953,7 @@ s   try {
       .eq('status', 'active')
     	.single();
 
-s     if (error || !data) {
+    if (error || !data) {
       console.log('Producto no encontrado:', error);
       return res.status(404).json({ error: 'Producto no encontrado' });
     }
@@ -963,11 +963,11 @@ s     if (error || !data) {
       name: data.name,
       description: data.description,
       price: data.price,
-  s     currency: data.currency,
+      currency: data.currency,
       duration: data.duration,
       type: data.type,
       category: data.category,
-Indented       image: data.image,
+      image: data.image,
       features: data.features,
   	  slug: data.slug,
       created_at: data.created_at,
@@ -1040,7 +1040,7 @@ app.get('/api/cron/process-deliveries', async (req, res) => {
   	  try {
   	    const commands = [
   	      `say "${message}"`,
-s   	      `broadcast ${message}`
+  	      `broadcast ${message}`
   	    ];
   	    
   	    for (const cmd of commands) {
@@ -1125,10 +1125,9 @@ s   	      `broadcast ${message}`
   	  	  
   	  } catch (error) {
   	  	console.error(`❌ Error: ${error.message}`);
-  	  	  
-  	  	const newAttempts = attempts + 1;
+    	  	const newAttempts = attempts + 1;
   	  	const newInventoryFailCount = (inventory_fail_count || 0) + 1;
-ar   	  	const now = new Date();
+  	  	const now = new Date();
   	  	const expiresAt = new Date(created_at);
   	  	expiresAt.setHours(expiresAt.getHours() + 6);
   	  	  
@@ -1139,8 +1138,8 @@ ar   	  	const now = new Date();
   	  	  await supabaseAdmin.from('pending_deliveries').update({
   	  	  	status: 'failed',
   	  	  	attempts: newAttempts,
-  	  	  	inventory_fail_count: newInventoryFailCount,
-ar   	  	  	last_attempt: now.toISOString(),
+    	  	  inventory_fail_count: newInventoryFailCount,
+  	  	  	last_attempt: now.toISOString(),
   	  	  	error_message: 'Expiró después de 6 horas'
   	  	  }).eq('id', id);
   	  	  
@@ -1150,7 +1149,7 @@ ar   	  	  	last_attempt: now.toISOString(),
   	  	  }).eq('id', sale_id);
   	  	  
   	  	  return { success: false, expired: true };
-ar   	  	}
+  	  	}
   	  	  
   	  	await supabaseAdmin.from('pending_deliveries').update({
   	  	  attempts: newAttempts,
@@ -1178,7 +1177,7 @@ ar   	  	}
   	  return res.json({ 
   	    success: true, 
   	    message: 'No hay entregas pendientes',
-s   	    processed: 0 
+  	    processed: 0 
   	  });
   	}
   	  
@@ -1189,7 +1188,7 @@ s   	    processed: 0 
   	for (const delivery of deliveries) {
   	  if (delivery.last_attempt) {
   	  	const lastAttempt = new Date(delivery.last_attempt);
-ar   	  	const minutesSince = (Date.now() - lastAttempt.getTime()) / 1000 / 60;
+  	  	const minutesSince = (Date.now() - lastAttempt.getTime()) / 1000 / 60;
   	  	const requiredDelay = getNextAttemptDelay(delivery.created_at);
   	  	  
   	  	if (minutesSince < requiredDelay) {
@@ -1335,7 +1334,7 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
   	  	  }
   	  	);
 
-"   	  	if (deliveryResult.success) {
+  	  	if (deliveryResult.success) {
   	  	  console.log('✅ Entrega RCON exitosa');
 
   	  	  await supabaseAdmin
@@ -1343,7 +1342,7 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
   	  	  	.update({ 
   	  	  	  status: 'completed',
   	  	  	  kit_delivered: true,
-M   	  	  	  delivery_status: 'completed',
+  	  	  	  delivery_status: 'completed',
   	  	  	  delivered_at: new Date().toISOString()
   	  	  	})
   	  	  	.eq('id', sale.id);
@@ -1353,7 +1352,7 @@ M   	  	  	  delivery_status: 'completed',
   	  	  	message: '✅ COMPRA SIMULADA Y ENTREGADA EXITOSAMENTE',
   	  	  	sale: sale,
   	  	  	delivery: deliveryResult
-  	  	  });
+    	  	  });
   	  	} else {
   	  	  throw new Error(deliveryResult.message || deliveryResult.error || 'Error en entrega');
   	  	}
@@ -1390,7 +1389,7 @@ M   	  	  	  delivery_status: 'completed',
 
   } catch (error) {
   	console.error('❌ Error en simulación de compra:', error);
-all   	res.status(500).json({ error: 'Error en simulación', details: error.message });
+  	res.status(500).json({ error: 'Error en simulación', details: error.message });
   }
 });
 
