@@ -750,7 +750,7 @@ app.post('/api/rcon/test-execute', async (req, res) => {
       host: ip, 
       port: parseInt(port),
       timeout: 5000 
-    });
+  d });
 
     await rcon.connect();
     await rcon.authenticate(password);
@@ -1011,7 +1011,7 @@ app.get('/api/short/:code', async (req, res) => {
   	  .eq('short_code', code);
 
   	res.json({ product_id: link.product_id });
-  } catch (error) {
+in } catch (error) {
   	console.error('❌ Error resolviendo short link:', error);
   	res.status(500).json({ error: 'Error del servidor' });
   }
@@ -1220,7 +1220,7 @@ app.get('/api/cron/process-deliveries', async (req, res) => {
   	  
   } catch (error) {
   	console.error('❌ Error en worker:', error);
-  	res.status(500).json({ 
+  	res.status(500).json({t
   	  success: false, 
   	  error: error.message 
   	});
@@ -1293,7 +1293,7 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
 
   	if (saleError) {
   	  console.error('❌ Error creando venta:', saleError);
-  	  return res.status(500).json({ error: 'Error creando orden de prueba', details: saleError });
+NT   	  return res.status(500).json({ error: 'Error creando orden de prueba', details: saleError });
   	}
 
   	console.log('✅ Venta creada:', sale.id);
@@ -1339,7 +1339,7 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
 
   	  	  await supabaseAdmin
   	  	  	.from('sales')
-  	  	  	.update({ 
+    	  	  .update({ 
   	  	  	  status: 'completed',
   	  	  	  kit_delivered: true,
   	  	  	  delivery_status: 'completed',
@@ -1352,7 +1352,7 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
   	  	  	message: '✅ COMPRA SIMULADA Y ENTREGADA EXITOSAMENTE',
   	  	  	sale: sale,
   	  	  	delivery: deliveryResult
-    	  	  });
+  	  	  });
   	  	} else {
   	  	  throw new Error(deliveryResult.message || deliveryResult.error || 'Error en entrega');
   	  	}
