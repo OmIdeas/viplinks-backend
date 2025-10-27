@@ -22,6 +22,7 @@ import serversRoutes from './routes/servers.js';
 import speakeasy from 'speakeasy';
 import QRCode from 'qrcode';
 import { JWT_SECRET } from './config.js';
+import pluginRoutes from './routes/plugin.js';
 
 // ------------------------------
 // App base
@@ -31,6 +32,7 @@ const PORT = process.env.PORT || 3000;
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use('/api/servers', serversRoutes);
+app.use('/api/plugin', pluginRoutes);
 
 // ------------------------------
 // Nodemailer (opcional, solo si hay vars de entorno)
@@ -1499,4 +1501,5 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
