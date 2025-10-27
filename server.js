@@ -12,6 +12,7 @@ import { validatePlayer, executeDeliveryCommands } from './utils/rcon.js';
 import productsRoutes from './routes/products.js';
 import webhooksRoutes from './routes/webhooks.js';
 import brandsRoutes from './routes/brands.js';
+import serversRoutes from './routes/servers.js'; //
 import speakeasy from 'speakeasy';  // ← NUEVO: Para 2FA
 import QRCode from 'qrcode';        // ← NUEVO: Para generar QR de 2FA
 
@@ -1818,4 +1819,5 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
