@@ -1,20 +1,10 @@
-// routes/plugin.js
-import express from 'express';
-import crypto from 'crypto';
-import { supabaseAdmin } from '../supabase.js';
-
-const router = express.Router();
-
 async function getServerByKey(rawKey) {
-  // Sanear la key (evita espacios al copiar/pegar)
   const serverKey = String(rawKey || '').trim();
-
-  // Validación rápida (todas nuestras keys empiezan con este prefijo)
   if (!serverKey.startsWith('vl_key_')) return null;
 
   const { data: server, error } = await supabaseAdmin
     .from('servers')
-    .select('id, user_id, server_name, server_ip, rcon_port, server_key, hmac_secret')
+    .select('id, user_id, server_name, server_ip, rcon_port, server_key') // ← SIN hmac_secret
     .eq('server_key', serverKey)
     .limit(1)
     .maybeSingle();
