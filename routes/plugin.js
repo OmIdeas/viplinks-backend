@@ -1,10 +1,18 @@
+// routes/plugin.js
+import express from 'express';
+import crypto from 'crypto';
+import { supabaseAdmin } from '../supabase.js';
+
+const router = express.Router();
+
+/** Helper: buscar server por server_key (sanitiza y valida prefijo) */
 async function getServerByKey(rawKey) {
   const serverKey = String(rawKey || '').trim();
   if (!serverKey.startsWith('vl_key_')) return null;
 
   const { data: server, error } = await supabaseAdmin
     .from('servers')
-    .select('id, user_id, server_name, server_ip, rcon_port, server_key') // ← SIN hmac_secret
+    .select('id, user_id, server_name, server_ip, rcon_port, server_key') // SIN hmac_secret
     .eq('server_key', serverKey)
     .limit(1)
     .maybeSingle();
@@ -13,18 +21,20 @@ async function getServerByKey(rawKey) {
   return server;
 }
 
-// HMAC opcional (si guardas un hmac_secret en la tabla servers)
-// El plugin solo enviará firma si tú lo activas; si no hay secret, no se exige.
+/** HMAC opcional: si no hay secret, no se exige */
 function verifyHmac(req, secret) {
-  if (!secret) return true; // no se aplica
+  if (!secret) return true;
   const ts = req.header('x-timestamp');
   const sig = req.header('x-signature');
   if (!ts || !sig) return false;
+
   const now = Math.floor(Date.now() / 1000);
   if (Math.abs(now - parseInt(ts, 10)) > 300) return false; // ±5 min
+
   const body = JSON.stringify(req.body || {});
   const base = `${req.method}\n${req.originalUrl}\n${ts}\n${body}`;
   const expected = crypto.createHmac('sha256', secret).update(base).digest('hex');
+
   try {
     return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
   } catch {
@@ -32,18 +42,22 @@ function verifyHmac(req, secret) {
   }
 }
 
-// GET /api/plugin/health/:serverKey
+/** GET /api/plugin/health/:serverKey */
 router.get('/health/:serverKey', async (req, res) => {
   const server = await getServerByKey(decodeURIComponent(req.params.serverKey));
   if (!server) return res.status(404).json({ ok: false, error: 'server_not_found' });
   return res.json({ ok: true, server_id: server.id, server_name: server.server_name });
 });
 
-// GET /api/plugin/pending-deliveries/:serverKey
+/** GET /api/plugin/pending-deliveries/:serverKey */
 router.get('/pending-deliveries/:serverKey', async (req, res) => {
   const server = await getServerByKey(decodeURIComponent(req.params.serverKey));
   if (!server) return res.status(404).json({ success: false, error: 'server_not_found' });
-  if (!verifyHmac(req, server.hmac_secret)) return res.status(401).json({ success: false, error: 'invalid_signature' });
+
+  // Como no seleccionamos hmac_secret, por defecto no se valida HMAC.
+  // Si luego agregás la columna y querés exigirla:
+  // const valid = verifyHmac(req, server.hmac_secret);
+  // if (!valid) return res.status(401).json({ success: false, error: 'invalid_signature' });
 
   const { data: rows, error } = await supabaseAdmin
     .from('pending_deliveries')
@@ -55,7 +69,6 @@ router.get('/pending-deliveries/:serverKey', async (req, res) => {
 
   if (error) return res.status(500).json({ success: false, error: error.message });
 
-  // Adaptar al shape que el plugin espera
   const deliveries = (rows || []).map(r => ({
     sale_id: r.sale_id,
     steam_id: r.steam_id,
@@ -68,7 +81,7 @@ router.get('/pending-deliveries/:serverKey', async (req, res) => {
     error_message: r.error_message || null
   }));
 
-  // Enriquecer username/product_name si vinieron vacíos (opcional)
+  // Enriquecer username/product_name si faltan (opcional)
   const needHydrate = deliveries.filter(d => !d.username || !d.product_name);
   if (needHydrate.length) {
     const saleIds = [...new Set(needHydrate.map(d => d.sale_id).filter(Boolean))];
@@ -102,16 +115,17 @@ router.get('/pending-deliveries/:serverKey', async (req, res) => {
   });
 });
 
-// POST /api/plugin/mark-delivered
+/** POST /api/plugin/mark-delivered */
 router.post('/mark-delivered', async (req, res) => {
   const { server_key, sale_id, success, error_message } = req.body || {};
   if (!server_key || !sale_id) return res.status(400).json({ ok: false, error: 'missing_fields' });
 
   const server = await getServerByKey(server_key);
   if (!server) return res.status(404).json({ ok: false, error: 'server_not_found' });
-  if (!verifyHmac(req, server.hmac_secret)) return res.status(401).json({ ok: false, error: 'invalid_signature' });
 
-  // localizar la entrega pendiente vinculada a este server y venta
+  // Si luego querés exigir HMAC, volvés a seleccionar hmac_secret y descomentás:
+  // if (!verifyHmac(req, server.hmac_secret)) return res.status(401).json({ ok: false, error: 'invalid_signature' });
+
   const { data: pending } = await supabaseAdmin
     .from('pending_deliveries')
     .select('id')
@@ -140,7 +154,6 @@ router.post('/mark-delivered', async (req, res) => {
     await supabaseAdmin.from('pending_deliveries')
       .update({ last_attempt: now, error_message: error_message || 'plugin_reported_error' })
       .eq('id', pending.id);
-    // Lo dejamos pendiente para que el worker reintente
     return res.json({ ok: true, noted: true });
   }
 });
