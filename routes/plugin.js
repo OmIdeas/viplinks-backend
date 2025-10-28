@@ -5,12 +5,20 @@ import { supabaseAdmin } from '../supabase.js';
 
 const router = express.Router();
 
-async function getServerByKey(serverKey) {
+async function getServerByKey(rawKey) {
+  // Sanear la key (evita espacios al copiar/pegar)
+  const serverKey = String(rawKey || '').trim();
+
+  // Validación rápida (todas nuestras keys empiezan con este prefijo)
+  if (!serverKey.startsWith('vl_key_')) return null;
+
   const { data: server, error } = await supabaseAdmin
     .from('servers')
     .select('id, user_id, server_name, server_ip, rcon_port, server_key, hmac_secret')
     .eq('server_key', serverKey)
+    .limit(1)
     .maybeSingle();
+
   if (error || !server) return null;
   return server;
 }
@@ -36,14 +44,14 @@ function verifyHmac(req, secret) {
 
 // GET /api/plugin/health/:serverKey
 router.get('/health/:serverKey', async (req, res) => {
-  const server = await getServerByKey(req.params.serverKey);
+  const server = await getServerByKey(decodeURIComponent(req.params.serverKey));
   if (!server) return res.status(404).json({ ok: false, error: 'server_not_found' });
   return res.json({ ok: true, server_id: server.id, server_name: server.server_name });
 });
 
 // GET /api/plugin/pending-deliveries/:serverKey
 router.get('/pending-deliveries/:serverKey', async (req, res) => {
-  const server = await getServerByKey(req.params.serverKey);
+  const server = await getServerByKey(decodeURIComponent(req.params.serverKey));
   if (!server) return res.status(404).json({ success: false, error: 'server_not_found' });
   if (!verifyHmac(req, server.hmac_secret)) return res.status(401).json({ success: false, error: 'invalid_signature' });
 
