@@ -10,6 +10,7 @@ import jwt from 'jsonwebtoken';
 import { supabase, supabaseAdmin } from './supabase.js';
 import nodemailer from 'nodemailer';
 import { Rcon } from 'rcon-client';
+import { logSupabaseKeys } from './supabase.js';
 // Los siguientes imports pueden estar presentes en tu repo; no son usados aquí.
 // Mantenerlos no rompe nada (ESM permite imports no usados).
 import dashboardRouter from './routes/dashboard.js';
@@ -1760,6 +1761,7 @@ app.use('/api', (req, res) => {
     method: req.method
   });
 });
+logSupabaseKeys();
 
 
 // ------------------------------
@@ -1768,6 +1770,7 @@ app.use('/api', (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
 
 
