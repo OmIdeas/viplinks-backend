@@ -29,17 +29,46 @@ import pluginRoutes from './routes/plugin.js';
 // ------------------------------
 const app = express();
 const PORT = process.env.PORT || 3000;
-app.use(cors({ origin: true, credentials: true }));
+
+// CORS (origins permitidos)
+app.use(cors({
+  origin: [
+    'https://app.viplinks.org',
+    'https://viplinks.org',
+    'https://www.viplinks.org',
+    'http://localhost:3000',
+    'http://localhost:5173'
+  ],
+  credentials: true
+}));
+
 app.use(express.json({ limit: '10mb' }));
-// 🩺 Healthchecks para front y monitores
-app.get('/health', (_req, res) => res.json({ ok: true, service: 'viplinks-backend', time: Date.now() }));
-app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'viplinks-backend', time: Date.now() }));
-app.use('/api/servers', serversRoutes);
-app.use('/api/plugin', pluginRoutes);
+
+// Healthchecks (para monitores y front)
+app.get('/health', (_req, res) =>
+  res.json({ ok: true, service: 'viplinks-backend', time: Date.now() })
+);
+app.get('/api/health', (_req, res) =>
+  res.json({ ok: true, service: 'viplinks-backend', time: Date.now() })
+);
+
+// Rutas del API (montadas UNA sola vez)
 app.use('/api/products', productsRoutes);
 app.use('/api/webhooks', webhooksRoutes);
 app.use('/api/brands', brandsRoutes);
-app.get('/health', (_req, res) => res.json({ ok: true }));
+app.use('/api/servers', serversRoutes);
+app.use('/api/plugin', pluginRoutes);
+
+// 404 de API (ayuda a detectar paths mal llamados)
+app.use('/api', (req, res) => {
+  res.status(404).json({
+    success: false,
+    error: 'Not found',
+    path: req.path,
+    method: req.method
+  });
+});
+
 
 // ------------------------------
 // Nodemailer (opcional, solo si hay vars de entorno)
@@ -1741,6 +1770,7 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
 
 
