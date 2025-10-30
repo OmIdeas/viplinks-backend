@@ -1,71 +1,32 @@
 // utils/rcon.js
 import { Rcon } from 'rcon-client';
 
-/**
- * Valida si un jugador existe en el servidor
- * Soporta múltiples juegos detectando automáticamente el comando correcto
- */
 export async function validatePlayer(config, identifier) {
   let rcon = null;
   
   try {
-    // 🔍 LOGS DE DIAGNÓSTICO - INICIO
-    console.log('🔍 validatePlayer - config recibido:', JSON.stringify({
-      ip: config.ip,
-      port: config.port,
-      password: config.password ? '***EXISTE***' : 'UNDEFINED/NULL'
-    }, null, 2));
-    console.log('🔑 Tipo de password:', typeof config.password);
-    console.log('🔑 Password value:', config.password);
-    // 🔍 LOGS DE DIAGNÓSTICO - FIN
-    
-    console.log(`🔌 Conectando a RCON: ${config.ip}:${config.port}`);
-    
     rcon = new Rcon({
       host: config.ip,
       port: parseInt(config.port),
       password: config.password,
-      timeout: 15000  // ← Aumentado a 15 segundos
+      timeout: 30000
     });
     
-    console.log('⏳ Estableciendo conexión...');
     await rcon.connect();
-    console.log('✅ Conectado y autenticado a RCON');
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
-    // Lista de comandos a probar según el juego
-    const commands = [
-      'status',          // CS:GO, Garry's Mod, Source games, Rust
-      'playerlist',      // Rust alternativo
-      'listplayers',     // ARK, 7 Days to Die
-      'list',            // Minecraft
-      'players'          // Otros juegos
-    ];
-
+    const commands = ['status', 'playerlist', 'listplayers', 'list', 'players'];
     let response = '';
     let workingCommand = '';
 
-    // Probar cada comando hasta encontrar uno que funcione
     for (const cmd of commands) {
       try {
-        console.log(`🔍 Probando comando: ${cmd}`);
         response = await rcon.send(cmd);
-        
-        // Si la respuesta tiene contenido útil, usar este comando
         if (response && response.length > 10) {
           workingCommand = cmd;
-          console.log(`✅ Comando funcional: ${cmd}`);
-          console.log(`📏 Respuesta recibida: ${response.length} caracteres`);
           break;
-        } else {
-          console.log(`⚠️ Comando ${cmd} respondió pero sin contenido útil (${response?.length || 0} chars)`);
         }
       } catch (err) {
-        console.log(`❌ Comando ${cmd} falló: ${err.message}`);
-        // Si es timeout, intentar con el siguiente comando
-        if (err.message.includes('Timeout') || err.message.includes('timeout')) {
-          console.log(`⏱️ Timeout en comando ${cmd}, probando siguiente...`);
-          continue;
-        }
         continue;
       }
     }
@@ -73,170 +34,151 @@ export async function validatePlayer(config, identifier) {
     if (!response || !workingCommand) {
       return {
         valid: false,
-        error: 'No se pudo obtener lista de jugadores del servidor',
-        message: 'El servidor no responde a comandos de lista de jugadores'
+        error: 'No se pudo obtener lista de jugadores',
+        message: 'El servidor no responde'
       };
     }
 
-    console.log('📋 Respuesta del servidor (primeros 500 chars):', response.substring(0, 500));
-
-    // Limpiar el identificador para búsqueda flexible
     const cleanIdentifier = identifier.trim().toLowerCase();
     const responseLines = response.toLowerCase().split('\n');
-
-    // Buscar el identificador en la respuesta (case-insensitive)
     let found = false;
     let playerName = identifier;
-    let matchedLine = '';
 
     for (const line of responseLines) {
       if (line.includes(cleanIdentifier)) {
         found = true;
-        matchedLine = line;
-        
-        // Intentar extraer el nombre del jugador de la línea
-        // Diferentes formatos según el juego:
-        
-        // Formato: "PlayerName" <STEAM_ID>
-        let match = line.match(/"([^"]+)"/);
-        if (match) {
-          playerName = match[1];
-          break;
-        }
-        
-        // Formato: PlayerName STEAM_ID (sin comillas)
-        match = line.match(/^\s*(\S+)/);
-        if (match) {
-          playerName = match[1];
-          break;
-        }
+        const match = line.match(/"([^"]+)"/);
+        if (match) playerName = match[1];
+        break;
       }
     }
 
     if (found) {
-      console.log(`✅ Jugador encontrado en línea: ${matchedLine}`);
       return {
         valid: true,
         playerName: playerName,
         message: `Jugador encontrado: ${playerName}`,
         command_used: workingCommand
       };
-    } else {
-      console.log(`❌ Jugador NO encontrado. Buscando: "${cleanIdentifier}"`);
-      console.log(`📋 Respuesta completa del servidor:\n${response}`);
-      
-      return {
-        valid: false,
-        message: 'Jugador no encontrado en el servidor. Asegúrate de estar conectado y que tu Steam ID o nombre sea correcto.',
-        searched_for: identifier,
-        command_used: workingCommand
-      };
     }
-  } catch (error) {
-    console.error('❌ Error RCON:', error.message);
-    console.error('❌ Error stack:', error.stack);
     
     return {
       valid: false,
-      error: 'No se pudo conectar al servidor RCON',
-      message: 'Verifica que el servidor esté online y la configuración RCON sea correcta.',
-      details: error.message
+      message: 'Jugador no conectado',
+      searched_for: identifier,
+      command_used: workingCommand
     };
     
+  } catch (error) {
+    return {
+      valid: false,
+      error: 'Error conectando a RCON',
+      message: 'Servidor offline o configuración incorrecta',
+      details: error.message
+    };
   } finally {
     if (rcon) {
       try {
         await rcon.end();
-        console.log('🔌 Desconectado de RCON');
-      } catch (e) {
-        console.error('Error desconectando:', e);
-      }
+      } catch (e) {}
     }
   }
 }
 
-/**
- * Ejecuta comandos RCON para entregar producto
- */
 export async function executeDeliveryCommands(config, commands, variables) {
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY = 3000;
+  
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const result = await tryExecuteCommands(config, commands, variables);
+    
+    if (result.success) {
+      return result;
+    }
+    
+    if (attempt < MAX_RETRIES) {
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+    }
+  }
+  
+  return {
+    success: false,
+    error: 'Todos los intentos fallaron',
+    message: `Falló después de ${MAX_RETRIES} intentos`,
+    attempts: MAX_RETRIES
+  };
+}
+
+async function tryExecuteCommands(config, commands, variables) {
   let rcon = null;
   const results = [];
   
   try {
-    console.log(`🔌 Conectando para ejecutar ${commands.length} comandos`);
+    if (!config.ip || !config.port || !config.password) {
+      throw new Error('Config RCON incompleta');
+    }
     
     rcon = new Rcon({
       host: config.ip,
       port: parseInt(config.port),
       password: config.password,
-      timeout: 15000  // ← Aumentado a 15 segundos
+      timeout: 30000
     });
     
     await rcon.connect();
-    console.log('✅ Conectado y autenticado para ejecución');
+    await new Promise(resolve => setTimeout(resolve, 1500));
 
-    for (const command of commands) {
-      let finalCommand = command;
+    for (let i = 0; i < commands.length; i++) {
+      let finalCommand = commands[i];
       
-      // Reemplazar variables en el comando
       for (const [key, value] of Object.entries(variables)) {
         finalCommand = finalCommand.replace(new RegExp(`{${key}}`, 'g'), value);
       }
-      
-      console.log(`▶️ Ejecutando: ${finalCommand}`);
       
       try {
         const result = await rcon.send(finalCommand);
         results.push({
           command: finalCommand,
-          response: result || 'Comando ejecutado correctamente',
+          response: result || 'OK',
           success: true
         });
-        console.log(`✅ Comando exitoso`);
+        
+        if (i < commands.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1500));
+        }
       } catch (cmdError) {
-        console.error(`❌ Error en comando: ${finalCommand}`, cmdError.message);
         results.push({
           command: finalCommand,
           error: cmdError.message,
           success: false
         });
+        throw new Error(`Comando ${i+1} falló: ${cmdError.message}`);
       }
-      
-      // Pequeña pausa entre comandos para no saturar el servidor
-      await new Promise(resolve => setTimeout(resolve, 500));
     }
 
     const successCount = results.filter(r => r.success).length;
-    const failedCount = results.filter(r => !r.success).length;
 
     return {
-      success: failedCount === 0,
+      success: true,
       results: results,
-      message: `${successCount}/${commands.length} comandos ejecutados correctamente`,
+      message: `${successCount}/${commands.length} comandos ejecutados`,
       successCount,
-      failedCount
+      failedCount: commands.length - successCount
     };
-  } catch (error) {
-    console.error('❌ Error ejecutando comandos:', error.message);
     
+  } catch (error) {
     return {
       success: false,
       results: results,
-      error: 'Error ejecutando comandos RCON',
-      message: 'No se pudieron ejecutar todos los comandos',
-      details: error.message
+      error: error.message,
+      message: 'Error ejecutando comandos',
+      details: error.stack
     };
-    
   } finally {
     if (rcon) {
       try {
         await rcon.end();
-        console.log('🔌 Desconectado');
-      } catch (e) {
-        console.error('Error desconectando:', e);
-      }
+      } catch (e) {}
     }
   }
 }
-
-
