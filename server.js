@@ -765,7 +765,7 @@ app.post('/api/rcon/test', async (req, res) => {
   const rcon = new Rcon({
     host: ip,
     port: parseInt(port, 10),
-    timeout: 5000
+    timeout: 3000
   });
 
   try {
@@ -1770,6 +1770,7 @@ logSupabaseKeys();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
 
 
