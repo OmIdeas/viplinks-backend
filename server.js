@@ -20,6 +20,7 @@ import productsRoutes from './routes/products.js';
 import webhooksRoutes from './routes/webhooks.js';
 import brandsRoutes from './routes/brands.js';
 import serversRoutes from './routes/servers.js';
+import { processePendingDeliveries, cleanupOldDeliveries } from './workers/deliveryWorker.js';
 import speakeasy from 'speakeasy';
 import QRCode from 'qrcode';
 import { JWT_SECRET } from './config.js';
@@ -1763,6 +1764,25 @@ app.use('/api', (req, res) => {
 });
 logSupabaseKeys();
 
+// ============================================
+// CRON WORKER: Entregas automáticas
+// ============================================
+console.log('🚀 Iniciando cron worker de entregas...');
+
+// Procesar entregas pendientes cada 1 minuto
+setInterval(async () => {
+  await processePendingDeliveries();
+}, 60000);
+
+// Limpiar entregas antiguas cada 24 horas
+setInterval(async () => {
+  await cleanupOldDeliveries();
+}, 24 * 60 * 60 * 1000);
+
+console.log('✅ Cron worker iniciado (cada 1 minuto)');
+
+// Ejecutar inmediatamente al iniciar
+processePendingDeliveries();
 
 // ------------------------------
 // Iniciar servidor
@@ -1770,6 +1790,7 @@ logSupabaseKeys();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
 
 
