@@ -31,7 +31,7 @@ router.get('/', async (req, res) => {
 
     const { data: servers, error } = await supabaseAdmin
       .from('servers')
-      .select('id, server_name, server_ip, rcon_port, server_key, last_connection_status, last_connection_message, game_type, created_at')
+      .select('id, server_name, server_ip, rcon_port, server_key, last_connection_status, last_connection_message, game_type, created_at, updated_at')
       .eq('user_id', profile_id)
       .order('created_at', { ascending: false });
 
