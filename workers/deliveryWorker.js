@@ -97,6 +97,9 @@ async function processSingleDelivery(delivery) {
       buyer_info
     );
 
+    console.log(`🔍 [WORKER] Resultado completo:`, JSON.stringify(result, null, 2));
+    console.log(`🔍 [WORKER] Error details:`, result.error);
+    console.log(`🔍 [WORKER] Results array:`, result.results);
     console.log(`📊 [WORKER] Resultado:`, {
       success: result.success,
       successCount: result.successCount,
