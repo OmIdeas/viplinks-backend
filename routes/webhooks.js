@@ -1,181 +1,284 @@
+// routes/webhooks.js - VERSIÓN CORREGIDA
 import express from 'express';
 import { supabaseAdmin } from '../supabase.js';
-import { decrypt } from '../utils/encryption.js';
 import { executeDeliveryCommands } from '../utils/rcon.js';
 
 const router = express.Router();
 
+/**
+ * Webhook de Mercado Pago
+ * POST /api/webhooks/mercadopago
+ */
 router.post('/mercadopago', async (req, res) => {
   try {
+    console.log('🔔 Webhook Mercado Pago recibido');
+    console.log('Body:', JSON.stringify(req.body, null, 2));
+
     const { type, data } = req.body;
-    
+
+    // Solo procesar pagos aprobados
     if (type !== 'payment') {
-      return res.sendStatus(200);
+      console.log('⏭️ Evento ignorado (no es payment):', type);
+      return res.status(200).json({ received: true });
     }
 
-    // Buscar compra por payment_id
-    const { data: purchase, error: purchaseError } = await supabaseAdmin
+    const paymentId = data?.id;
+    if (!paymentId) {
+      console.log('❌ No se encontró payment ID');
+      return res.status(400).json({ error: 'No payment ID' });
+    }
+
+    console.log('💳 Payment ID:', paymentId);
+
+    // Buscar la venta asociada
+    const { data: sale, error: saleError } = await supabaseAdmin
       .from('sales')
       .select('*')
-      .eq('payment_id', String(data.id))
-      .single();
+      .eq('payment_id', paymentId)
+      .eq('status', 'pending')
+      .maybeSingle();
 
-    if (purchaseError || !purchase) {
-      console.log('Compra no encontrada para payment:', data.id);
-      return res.sendStatus(200);
+    if (saleError) {
+      console.error('❌ Error buscando venta:', saleError);
+      return res.status(500).json({ error: 'Database error' });
     }
 
-    // Si ya fue entregado, skip
-    if (purchase.kit_delivered) {
-      return res.sendStatus(200);
+    if (!sale) {
+      console.log('ℹ️ Venta no encontrada o ya procesada:', paymentId);
+      return res.status(200).json({ received: true, message: 'Sale not found or already processed' });
     }
 
-    // Obtener producto con config RCON
+    console.log('📦 Venta encontrada:', sale.id);
+
+    // Obtener el producto
     const { data: product, error: productError } = await supabaseAdmin
       .from('products')
       .select('*')
-      .eq('id', purchase.product_id)
+      .eq('id', sale.product_id)
       .single();
 
     if (productError || !product) {
-      console.error('Producto no encontrado');
-      return res.sendStatus(404);
+      console.error('❌ Producto no encontrado:', productError);
+      return res.status(500).json({ error: 'Product not found' });
     }
 
-    // Verificar que tenga RCON configurado
-    if (!product.rcon_host || !product.rcon_password || !product.delivery_commands) {
-      console.log('Producto sin RCON configurado');
-      return res.sendStatus(200);
-    }
+    console.log('✅ Producto obtenido:', product.name);
+    console.log('🔍 Product details:', {
+      id: product.id,
+      name: product.name,
+      type: product.type,
+      category: product.category,
+      has_server_config: !!product.server_config,
+      has_delivery_commands: !!product.delivery_commands,
+      commands_count: product.delivery_commands?.length || 0
+    });
 
-    // Desencriptar password
-    const encryptedObj = JSON.parse(product.rcon_password);
-    const password = decrypt(encryptedObj);
+    // Actualizar venta a completada (pago aprobado)
+    await supabaseAdmin
+      .from('sales')
+      .update({
+        status: 'completed',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', sale.id);
 
-    // Config RCON
-    const rconConfig = {
-      ip: product.rcon_host,
-      port: product.rcon_port,
-      password: password
-    };
+    console.log('✅ Pago confirmado, venta actualizada');
 
-    // Variables para reemplazar en comandos
-    const variables = {
-      steamid: purchase.buyer_steam_id || 'UNKNOWN',
-      username: purchase.buyer_username || 'UNKNOWN',
-      email: purchase.buyer_email,
-      orderid: purchase.id
-    };
+    // PROCESAR ENTREGA GAMING
+    const isGaming = product.type === 'gaming' || product.category === 'gaming';
+    
+    if (isGaming && product.server_config && product.delivery_commands?.length > 0) {
+      console.log('🎮 Iniciando proceso de entrega gaming...');
 
-    // Intentar entrega inmediata
-    let deliverySuccess = false;
-    let deliveryError = null;
-
-    console.log('🎮 Intentando entrega inmediata...');
-
-    try {
-      const result = await executeDeliveryCommands(
-        rconConfig,
-        product.delivery_commands,
-        variables
-      );
-      
-      if (result.success) {
-        console.log('✅ Entrega inmediata exitosa');
-        deliverySuccess = true;
-        
-        // Actualizar venta como completada - USANDO COLUMNAS CORRECTAS
-        await supabaseAdmin
-          .from('sales')
-          .update({
-            status: 'completed',
-            kit_delivered: true,
-            delivery_status: 'completed',
-            delivered_at: new Date().toISOString()
-          })
-          .eq('id', purchase.id);
-        
-        console.log(`✅ Kit entregado: ${product.name} → ${purchase.buyer_email}`);
-      } else {
-        deliveryError = result.message || result.error || 'Error en entrega';
-        console.log('⚠️ Entrega inmediata falló:', deliveryError);
-      }
-    } catch (error) {
-      deliveryError = error.message;
-      console.error('❌ Error en entrega inmediata:', error);
-    }
-
-    // Si la entrega falló, guardar en pending_deliveries para reintentos
-    if (!deliverySuccess) {
-      console.log('💾 Guardando en pending_deliveries para reintentos automáticos...');
-      
       try {
-        const { error: pendingError } = await supabaseAdmin
-          .from('pending_deliveries')
-          .insert({
-            sale_id: purchase.id,
-            product_id: product.id,
-            seller_id: product.seller_id,
-            steam_id: purchase.buyer_steam_id || 'UNKNOWN',
-            commands: product.delivery_commands || [],
-            server_config: {
-              ip: product.rcon_host,
-              port: product.rcon_port,
-              password: password // Ya desencriptado
-            },
-            status: 'pending',
-            attempts: 0,
-            error_message: deliveryError,
-            expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString() // 6 horas
-          });
-        
-        if (pendingError) {
-          console.error('❌ Error guardando pending_delivery:', pendingError);
-          
-          // Marcar venta como fallida - USANDO COLUMNAS CORRECTAS
-          await supabaseAdmin
-            .from('sales')
-            .update({
-              status: 'failed',
-              delivery_status: 'failed',
-              error_message: `No se pudo entregar ni guardar para reintentos: ${deliveryError}`
-            })
-            .eq('id', purchase.id);
-        } else {
-          console.log('✅ Entrega guardada para reintentos automáticos (máximo 6 horas)');
-          
-          // Actualizar venta como "pending delivery" - USANDO COLUMNAS CORRECTAS
-          await supabaseAdmin
-            .from('sales')
-            .update({
-              status: 'pending',
-              delivery_status: 'pending',
-              notes: 'Entrega automática en proceso. El sistema reintentará cuando el jugador se conecte (máximo 6 horas).'
-            })
-            .eq('id', purchase.id);
+        // ✅ EXTRACCIÓN CORRECTA DE server_config
+        const serverConfig = product.server_config;
+        const rconConfig = {
+          ip: serverConfig.ip,
+          port: parseInt(serverConfig.rcon_port || serverConfig.port, 10),
+          password: serverConfig.rcon_password || serverConfig.password
+        };
+
+        console.log('🔍 RCON Config extraído:', {
+          ip: rconConfig.ip,
+          port: rconConfig.port,
+          hasPassword: !!rconConfig.password
+        });
+
+        // ✅ VALIDACIÓN CRÍTICA
+        if (!rconConfig.ip || !rconConfig.port || !rconConfig.password) {
+          throw new Error('Configuración RCON incompleta: ' + JSON.stringify({
+            hasIp: !!rconConfig.ip,
+            hasPort: !!rconConfig.port,
+            hasPassword: !!rconConfig.password
+          }));
         }
-      } catch (error) {
-        console.error('❌ Error crítico en pending_deliveries:', error);
-        
-        // Marcar como fallida - USANDO COLUMNAS CORRECTAS
+
+        const steam_id = sale.buyer_steam_id;
+        const buyer_username = sale.buyer_username || steam_id;
+        const buyer_email = sale.buyer_email || '';
+
+        const buyer_info = {
+          steamid: steam_id,
+          username: buyer_username,
+          email: buyer_email,
+          orderid: sale.id,
+          player: steam_id
+        };
+
+        console.log('👤 Buyer info:', {
+          steamid: buyer_info.steamid,
+          username: buyer_info.username,
+          email: buyer_info.email ? 'SET' : 'EMPTY'
+        });
+
+        console.log('🚀 Ejecutando comandos RCON...');
+        console.log('📋 Comandos:', product.delivery_commands);
+
+        // ✅ EJECUTAR CON SISTEMA DE REINTENTOS AUTOMÁTICOS (3 intentos)
+        const deliveryResult = await executeDeliveryCommands(
+          rconConfig,
+          product.delivery_commands,
+          buyer_info
+        );
+
+        console.log('📊 Resultado de entrega:', {
+          success: deliveryResult.success,
+          successCount: deliveryResult.successCount,
+          failedCount: deliveryResult.failedCount,
+          error: deliveryResult.error || 'none'
+        });
+
+        if (deliveryResult.success) {
+          console.log('✅ Entrega RCON exitosa');
+
+          // Actualizar venta como entregada
+          await supabaseAdmin
+            .from('sales')
+            .update({
+              delivery_status: 'completed',
+              kit_delivered: true,
+              delivered_at: new Date().toISOString()
+            })
+            .eq('id', sale.id);
+
+          console.log('✅ Venta marcada como entregada');
+
+        } else {
+          console.log('⚠️ Entrega RCON falló, creando pending_delivery para reintentos');
+
+          // Crear pending_delivery para que el cron worker lo reintente
+          await supabaseAdmin
+            .from('pending_deliveries')
+            .insert({
+              sale_id: sale.id,
+              server_key: serverConfig.server_key || 'unknown',
+              steam_id: steam_id,
+              username: buyer_username,
+              product_name: product.name,
+              commands: product.delivery_commands,
+              server_config: rconConfig,
+              status: 'pending',
+              attempts: 0,
+              error_message: deliveryResult.error || deliveryResult.message || 'Error inicial de entrega'
+            });
+
+          console.log('✅ Pending delivery creada - El cron worker la procesará');
+
+          // Marcar como pending (no failed) para que el sistema lo reintente
+          await supabaseAdmin
+            .from('sales')
+            .update({
+              delivery_status: 'pending',
+              notes: 'Entrega en cola - se reintentará automáticamente'
+            })
+            .eq('id', sale.id);
+        }
+
+      } catch (rconError) {
+        console.error('❌ Error en proceso de entrega RCON:', rconError);
+
+        // Crear pending_delivery de emergencia
+        try {
+          const steam_id = sale.buyer_steam_id;
+          const buyer_username = sale.buyer_username || steam_id;
+
+          await supabaseAdmin
+            .from('pending_deliveries')
+            .insert({
+              sale_id: sale.id,
+              server_key: 'unknown',
+              steam_id: steam_id,
+              username: buyer_username,
+              product_name: product.name,
+              commands: product.delivery_commands || [],
+              server_config: product.server_config,
+              status: 'pending',
+              attempts: 0,
+              error_message: rconError.message
+            });
+
+          console.log('✅ Pending delivery de emergencia creada');
+        } catch (insertError) {
+          console.error('❌ Error crítico creando pending_delivery:', insertError);
+        }
+
+        // NO marcar como failed, dejar en pending
         await supabaseAdmin
           .from('sales')
           .update({
-            status: 'failed',
-            delivery_status: 'failed',
-            error_message: error.message
+            delivery_status: 'pending',
+            notes: `Error inicial: ${rconError.message} - Se reintentará`
           })
-          .eq('id', purchase.id);
+          .eq('id', sale.id);
       }
+
+    } else if (isGaming) {
+      console.log('⚠️ Producto gaming sin configuración RCON o comandos');
+      
+      // Marcar como completada si no requiere entrega automática
+      await supabaseAdmin
+        .from('sales')
+        .update({
+          delivery_status: 'completed',
+          notes: 'Producto sin entrega automática configurada'
+        })
+        .eq('id', sale.id);
+
+    } else {
+      console.log('📦 Producto no-gaming, entrega manual');
+      
+      // Productos no-gaming se marcan como completados
+      await supabaseAdmin
+        .from('sales')
+        .update({
+          delivery_status: 'completed',
+          notes: 'Producto no requiere entrega automática'
+        })
+        .eq('id', sale.id);
     }
 
-    res.sendStatus(200);
+    console.log('✅ Webhook procesado exitosamente');
+    return res.status(200).json({ 
+      received: true, 
+      processed: true,
+      sale_id: sale.id 
+    });
+
   } catch (error) {
-    console.error('Webhook error:', error);
-    res.sendStatus(500);
+    console.error('❌ Error procesando webhook:', error);
+    return res.status(500).json({ 
+      error: 'Webhook processing failed',
+      message: error.message 
+    });
   }
 });
 
+/**
+ * Health check para webhooks
+ */
+router.get('/health', (req, res) => {
+  res.json({ ok: true, service: 'webhooks' });
+});
+
 export default router;
-
-
