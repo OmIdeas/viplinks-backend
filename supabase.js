@@ -11,9 +11,11 @@ export const supabase = createClient(URL, ANON, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
-export const supabaseAdmin = createClient(URL, SERVICE, {
-  auth: { persistSession: false, autoRefreshToken: false },
-});
+export const supabaseAdmin = createClient(
+  SUPABASE_URL,
+  SUPABASE_SERVICE_ROLE_KEY,  // ← Debe usar esta
+  { auth: { autoRefreshToken: false, persistSession: false } }
+);
 
 // Log seguro (no imprime secretos)
 export function logSupabaseKeys() {
