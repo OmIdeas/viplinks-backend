@@ -1,3 +1,4 @@
+
 // routes/webhooks.js - VERSIÓN CORREGIDA
 import express from 'express';
 import { supabaseAdmin } from '../supabase.js';
@@ -176,7 +177,7 @@ router.post('/mercadopago', async (req, res) => {
               steam_id: steam_id,
               username: buyer_username,
               product_name: product.name,
-              commands: product.delivery_commands,
+              commands: Array.isArray(product.delivery_commands) ? product.delivery_commands : [product.delivery_commands],
               server_config: rconConfig,
               status: 'pending',
               attempts: 0,
