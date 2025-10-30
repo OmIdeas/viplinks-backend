@@ -137,7 +137,7 @@ router.post('/test', async (req, res) => {
     }
 
     const { server_ip, rcon_port, rcon_password } = server;
-    const rcon = new Rcon({ host: server_ip, port: parseInt(rcon_port, 10), timeout: 5000 });
+    const rcon = new Rcon({ host: server_ip, port: parseInt(rcon_port, 10), timeout: 30000 });
 
     try {
       await rcon.connect();
