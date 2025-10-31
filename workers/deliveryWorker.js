@@ -1,4 +1,4 @@
-// workers/deliveryWorker.js - NUEVO ARCHIVO
+// workers/deliveryWorker.js
 import { supabaseAdmin } from '../supabase.js';
 import { executeDeliveryCommands } from '../utils/rcon.js';
 
@@ -82,6 +82,36 @@ async function processSingleDelivery(delivery) {
       throw new Error('Configuración RCON incompleta');
     }
 
+    // CRÍTICO: Parsear comandos correctamente
+    let commands = delivery.commands;
+    
+    console.log('🔍 [WORKER] Commands raw:', commands);
+    console.log('🔍 [WORKER] Commands type:', typeof commands);
+    console.log('🔍 [WORKER] Commands isArray:', Array.isArray(commands));
+    
+    // Si commands es string, parsearlo
+    if (typeof commands === 'string') {
+      try {
+        commands = JSON.parse(commands);
+        console.log('✅ [WORKER] Commands parseados desde string a array');
+      } catch (parseError) {
+        console.error('❌ [WORKER] Error parseando commands:', parseError);
+        throw new Error(`Error parseando comandos: ${parseError.message}`);
+      }
+    }
+    
+    // Validar que sea array
+    if (!Array.isArray(commands)) {
+      throw new Error(`Commands no es un array después de parsear (tipo: ${typeof commands})`);
+    }
+    
+    if (commands.length === 0) {
+      throw new Error('Array de comandos está vacío');
+    }
+    
+    console.log('✅ [WORKER] Commands validados:', commands);
+    console.log(`📝 [WORKER] Total de comandos: ${commands.length}`);
+
     // Preparar variables para los comandos
     const buyer_info = {
       steamid: delivery.steam_id,
@@ -90,10 +120,12 @@ async function processSingleDelivery(delivery) {
       orderid: delivery.sale_id
     };
 
+    console.log('🔧 [WORKER] Variables para reemplazo:', buyer_info);
+
     // Ejecutar comandos
     const result = await executeDeliveryCommands(
       rconConfig,
-      delivery.commands,
+      commands,
       buyer_info
     );
 
@@ -170,6 +202,7 @@ async function processSingleDelivery(delivery) {
 
   } catch (error) {
     console.error(`❌ [WORKER] Error procesando delivery ${delivery.id}:`, error);
+    console.error(`❌ [WORKER] Stack trace:`, error.stack);
 
     // Actualizar error
     await supabaseAdmin
@@ -197,11 +230,4 @@ export async function cleanupOldDeliveries() {
     if (error) {
       console.error('❌ [WORKER] Error limpiando entregas antiguas:', error);
     } else {
-      console.log('✅ [WORKER] Entregas antiguas limpiadas');
-    }
-  } catch (error) {
-    console.error('❌ [WORKER] Error en cleanup:', error);
-  }
-}
-
-
+      console.log('✅ [WORKER] Entregas antiguas limpia
