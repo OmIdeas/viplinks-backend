@@ -1565,24 +1565,19 @@ app.use('/api', (req, res) => {
 logSupabaseKeys();
 
 // ============================================
-// CRON WORKER: Entregas automáticas - DESHABILITADO (usa plugin)
+// CRON WORKER: Entregas automáticas
 // ============================================
-// console.log('🚀 Iniciando cron worker de entregas...');
+console.log('🚀 Iniciando cron worker de entregas...');
 
-// // Procesar entregas pendientes cada 1 minuto
-// setInterval(async () => {
-//   await processePendingDeliveries();
-// }, 60000);
+// Procesar entregas pendientes cada 1 minuto
+setInterval(async () => {
+  await processePendingDeliveries();
+}, 60000);
 
-// // Limpiar entregas antiguas cada 24 horas
-// setInterval(async () => {
-//   await cleanupOldDeliveries();
-// }, 24 * 60 * 60 * 1000);
-
-// console.log('✅ Cron worker iniciado (cada 1 minuto)');
-
-// // Ejecutar inmediatamente al iniciar
-// processePendingDeliveries();
+// Limpiar entregas antiguas cada 24 horas
+setInterval(async () => {
+  await cleanupOldDeliveries();
+}, 24 * 60 * 60 * 1000);
 
 // ------------------------------
 // Iniciar servidor
@@ -1590,3 +1585,4 @@ logSupabaseKeys();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
