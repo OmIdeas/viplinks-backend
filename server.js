@@ -1157,89 +1157,6 @@ app.get('/api/short/:code', async (req, res) => {
 });
 
 // ========================================
-// CREATE PRODUCT  (evita 404 del front)
-// ========================================
-app.post('/api/products', async (req, res) => {
-  try {
-    const { profile_id } = getAuthenticatedUser(req);
-
-    const {
-      name,
-      description,
-      price,
-      currency,
-      duration,           // 'permanent' | '30' | '60' | '90' | '365' | 'one_time'
-      type,               // 'vip' | 'kit' | 'coins' | 'other' (desde front)
-      category,           // 'gaming'
-      image,
-      features,
-      commands = [],
-      rconHost,
-      rconPort,
-      rconPassword,
-      status = 'active'
-    } = req.body;
-
-    if (!name || !price || !currency || !category) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-
-    const server_config = (rconHost && rconPort && rconPassword)
-      ? { ip: rconHost, rcon_port: rconPort, rcon_password: rconPassword }
-      : null;
-
-    const row = {
-      seller_id: profile_id,
-      user_id: profile_id,
-      name,
-      description: description || '',
-      price: parseFloat(price),
-      currency,
-      duration: duration || 'permanent',
-      type: category === 'gaming' ? 'gaming' : (type || 'gaming'),
-      category: category || 'gaming',
-      image: image || null,
-      features: features || null,
-      server_config,
-      commands,
-      delivery_commands: commands,
-      status
-    };
-
-    const { data: product, error: insErr } = await supabaseAdmin
-      .from('products')
-      .insert(row)
-      .select('id')
-      .single();
-
-    if (insErr) {
-      console.error('Supabase insert error (products):', insErr);
-      return res.status(500).json({ error: insErr.message });
-    }
-
-    // short link automático
-    const short_code = Math.random().toString(36).slice(2, 10);
-    const { error: linkErr } = await supabaseAdmin
-      .from('short_links')
-      .insert({
-        short_code,
-        product_id: product.id,
-        active: true,
-        clicks: 0
-      });
-
-    if (linkErr && linkErr.code !== '23505') {
-      console.warn('short_links insert warn:', linkErr.message);
-    }
-
-    return res.status(201).json({ id: product.id, short_code });
-  } catch (e) {
-    console.error('POST /api/products error:', e);
-    return res.status(500).json({ error: e.message || 'Server error' });
-  }
-});
-
-// ========================================
 // CREATE SHORT LINK (compat con front)
 // ========================================
 app.post('/api/short-links', async (req, res) => {
@@ -1673,4 +1590,5 @@ processePendingDeliveries();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
