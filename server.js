@@ -1,6 +1,3 @@
-
-Copiar
-
 // ==============================
 // VipLinks API - server.js
 // ==============================
@@ -1588,4 +1585,5 @@ logSupabaseKeys();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
