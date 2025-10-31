@@ -123,6 +123,7 @@ router.post('/', async (req, res) => {
       visibility: 'private',
       views: 0,
       sales_count: 0,
+      requires_inventory: req.body.requires_inventory || false,
     };
 
     // Campos específicos para productos GAMING
