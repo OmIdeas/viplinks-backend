@@ -180,7 +180,7 @@ async function tryExecuteCommands(config, commands, variables) {
       host: config.ip,
       port: parseInt(config.port),
       password: config.password,
-      timeout: 30000
+      timeout: 60000
     });
     
     await rcon.connect();
