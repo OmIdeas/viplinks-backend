@@ -1553,6 +1553,90 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
   }
 });
 
+// ===== Dashboard: resumen (plan y flags) =====
+app.get('/api/dashboard/summary', async (req, res) => {
+  try {
+    const { profile_id } = getAuthenticatedUser(req);
+
+    const { data: profile, error } = await supabaseAdmin
+      .from('profiles')
+      .select('plan, service, guarantees_enabled, shop_enabled')
+      .eq('id', profile_id)
+      .maybeSingle();
+
+    if (error) throw error;
+
+    res.json({
+      guarantees_enabled: !!profile?.guarantees_enabled,
+      shop_enabled: !!profile?.shop_enabled,
+      service: profile?.service || profile?.plan || 'free'
+    });
+  } catch (e) {
+    res.status(401).json({ success: false, error: e.message });
+  }
+});
+
+// ===== Dashboard: garantías (resumen y montos) =====
+app.get('/api/dashboard/guarantees', async (req, res) => {
+  try {
+    const { profile_id } = getAuthenticatedUser(req);
+
+    const [{ data: products, error: e1 }, { data: sales, error: e2 }] = await Promise.all([
+      supabaseAdmin
+        .from('products')
+        .select('id, has_guarantee')
+        .eq('seller_id', profile_id),
+      supabaseAdmin
+        .from('sales')
+        .select('amount, commission, seller_amount, status, created_at')
+        .eq('seller_id', profile_id)
+    ]);
+    if (e1) throw e1;
+    if (e2) throw e2;
+
+    const products_with = (products || []).filter(p => p.has_guarantee).length;
+    const products_without = (products || []).length - products_with;
+
+    const pending = (sales || []).filter(s => s.status === 'pending');
+    const released = (sales || []).filter(s => s.status === 'completed');
+
+    const hold_gross = pending.reduce((a, s) => a + Number(s.amount || 0), 0);
+    const hold_net = pending.reduce((a, s) => {
+      const amount = Number(s.amount || 0);
+      const commission = Number(s.commission || 0);
+      const seller_amount = s.seller_amount != null ? Number(s.seller_amount) : (amount - commission);
+      return a + seller_amount;
+    }, 0);
+
+    const released_net = released.reduce((a, s) => {
+      const amount = Number(s.amount || 0);
+      const commission = Number(s.commission || 0);
+      const seller_amount = s.seller_amount != null ? Number(s.seller_amount) : (amount - commission);
+      return a + seller_amount;
+    }, 0);
+
+    const next_release_at = pending.length ? pending[0].created_at : null;
+
+    res.json({
+      products_with,
+      products_without,
+      on_hold: {
+        count: pending.length,
+        gross_usd: hold_gross,
+        net_usd: hold_net,
+        next_release_at
+      },
+      released: {
+        count: released.length,
+        net_usd: released_net
+      }
+    });
+  } catch (e) {
+    res.status(401).json({ success: false, error: e.message });
+  }
+});
+
+
 // ===== 404 para rutas de /api que no existen (debe ir al final) =====
 app.use('/api', (req, res) => {
   res.status(404).json({
@@ -1585,5 +1669,6 @@ logSupabaseKeys();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
 
