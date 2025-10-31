@@ -1461,86 +1461,7 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
 
     console.log('✅ Venta creada:', sale.id);
 
-    if (product.type === 'gaming' && product.server_config) {
-      try {
-        console.log('🎮 Intentando entrega RCON...');
-
-        const serverConfig = product.server_config;
-        const commands = product.delivery_commands || [];
-
-        if (!serverConfig.ip || !serverConfig.rcon_port || !serverConfig.rcon_password) {
-          throw new Error('Configuración de servidor incompleta');
-        }
-
-        console.log('🔌 Conectando a:', serverConfig.ip + ':' + serverConfig.rcon_port);
-
-        const rconConfig = {
-          ip: serverConfig.ip,
-          port: parseInt(serverConfig.rcon_port, 10),
-          password: serverConfig.rcon_password
-        };
-
-        console.log('🔧 RCON Config:', { ip: rconConfig.ip, port: rconConfig.port, password: '***' });
-        console.log('📝 Comandos a ejecutar:', commands.length, 'comando(s):', commands);
-
-        const deliveryResult = await executeDeliveryCommands(
-          rconConfig,
-          commands,
-          {
-            steamid: steamId,
-            username: username,
-            email: 'test@testing.com',
-            orderid: sale.id,
-            player: steamId
-          }
-        );
-
-        if (deliveryResult.success) {
-          console.log('✅ Entrega RCON exitosa');
-
-          await supabaseAdmin
-            .from('sales')
-            .update({
-              status: 'completed',
-              kit_delivered: true,
-              delivery_status: 'completed',
-              delivered_at: new Date().toISOString()
-            })
-            .eq('id', sale.id);
-
-          return res.json({
-            success: true,
-            message: '✅ COMPRA SIMULADA Y ENTREGADA EXITOSAMENTE',
-            sale: sale,
-            delivery: deliveryResult
-          });
-        } else {
-          throw new Error(deliveryResult.message || deliveryResult.error || 'Error en entrega');
-        }
-
-      } catch (rconError) {
-        console.error('❌ Error RCON:', rconError.message);
-
-        await supabaseAdmin
-          .from('sales')
-          .update({
-            status: 'failed',
-            delivery_status: 'failed',
-            error_message: rconError.message,
-            notes: `Error RCON de prueba: ${rconError.message}`
-          })
-          .eq('id', sale.id);
-
-        return res.json({
-          success: true,
-          message: '⚠️ Venta creada pero entrega RCON falló',
-          sale: sale,
-          error: rconError.message
-        });
-      }
-    }
-
-    console.log('✅ Producto no requiere entrega RCON');
+   if (product.type === 'gaming' && product.server_config) {
     return res.json({
       success: true,
       message: '✅ COMPRA SIMULADA (Producto sin RCON)',
@@ -1669,6 +1590,7 @@ logSupabaseKeys();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
 
 
