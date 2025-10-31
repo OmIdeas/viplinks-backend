@@ -230,4 +230,9 @@ export async function cleanupOldDeliveries() {
     if (error) {
       console.error('❌ [WORKER] Error limpiando entregas antiguas:', error);
     } else {
-      console.log('✅ [WORKER] Entregas antiguas limpia
+      console.log('✅ [WORKER] Entregas antiguas limpiadas');
+    }
+  } catch (error) {
+    console.error('❌ [WORKER] Error en cleanup:', error);
+  }
+}
