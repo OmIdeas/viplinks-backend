@@ -86,26 +86,82 @@ export async function validatePlayer(config, identifier) {
 }
 
 export async function executeDeliveryCommands(config, commands, variables) {
+  console.log('🔍 [RCON] executeDeliveryCommands llamado');
+  console.log('🔍 [RCON] Config:', { ip: config.ip, port: config.port, hasPassword: !!config.password });
+  console.log('🔍 [RCON] Commands type:', typeof commands);
+  console.log('🔍 [RCON] Commands isArray:', Array.isArray(commands));
+  console.log('🔍 [RCON] Commands:', JSON.stringify(commands));
+  console.log('🔍 [RCON] Variables:', JSON.stringify(variables));
+
+  // VALIDACIÓN: Verificar que commands sea un array
+  if (!commands) {
+    console.error('❌ [RCON] Commands es null o undefined');
+    return {
+      success: false,
+      error: 'Commands es null o undefined',
+      message: 'No hay comandos para ejecutar',
+      results: [],
+      successCount: 0,
+      failedCount: 0
+    };
+  }
+
+  if (!Array.isArray(commands)) {
+    console.error('❌ [RCON] Commands no es un array:', typeof commands);
+    return {
+      success: false,
+      error: `Commands no es un array (es ${typeof commands})`,
+      message: 'Formato de comandos inválido',
+      results: [],
+      successCount: 0,
+      failedCount: 0
+    };
+  }
+
+  if (commands.length === 0) {
+    console.error('❌ [RCON] Commands es un array vacío');
+    return {
+      success: false,
+      error: 'Array de comandos vacío',
+      message: 'No hay comandos para ejecutar',
+      results: [],
+      successCount: 0,
+      failedCount: 0
+    };
+  }
+
   const MAX_RETRIES = 3;
   const RETRY_DELAY = 3000;
   
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    console.log(`🔄 [RCON] Intento ${attempt}/${MAX_RETRIES}`);
     const result = await tryExecuteCommands(config, commands, variables);
     
+    console.log(`🔍 [RCON] Resultado intento ${attempt}:`, JSON.stringify(result, null, 2));
+    
     if (result.success) {
+      console.log(`✅ [RCON] Éxito en intento ${attempt}`);
       return result;
     }
     
+    console.log(`⚠️ [RCON] Intento ${attempt} falló: ${result.error}`);
+    
     if (attempt < MAX_RETRIES) {
+      console.log(`⏳ [RCON] Esperando ${RETRY_DELAY}ms antes del siguiente intento...`);
       await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
     }
   }
+  
+  console.log(`❌ [RCON] Todos los intentos fallaron`);
   
   return {
     success: false,
     error: 'Todos los intentos fallaron',
     message: `Falló después de ${MAX_RETRIES} intentos`,
-    attempts: MAX_RETRIES
+    attempts: MAX_RETRIES,
+    results: [],
+    successCount: 0,
+    failedCount: commands.length
   };
 }
 
@@ -114,6 +170,8 @@ async function tryExecuteCommands(config, commands, variables) {
   const results = [];
   
   try {
+    console.log('🔌 [RCON] Intentando conectar...');
+    
     if (!config.ip || !config.port || !config.password) {
       throw new Error('Config RCON incompleta');
     }
@@ -126,17 +184,30 @@ async function tryExecuteCommands(config, commands, variables) {
     });
     
     await rcon.connect();
+    console.log('✅ [RCON] Conectado exitosamente');
+    
     await new Promise(resolve => setTimeout(resolve, 1500));
+    console.log('⏳ [RCON] Esperó 1.5s después de conectar');
+
+    console.log(`📋 [RCON] Ejecutando ${commands.length} comandos...`);
 
     for (let i = 0; i < commands.length; i++) {
       let finalCommand = commands[i];
       
+      console.log(`🔹 [RCON] Comando ${i+1}/${commands.length} original:`, finalCommand);
+      
+      // Reemplazar variables
       for (const [key, value] of Object.entries(variables)) {
         finalCommand = finalCommand.replace(new RegExp(`{${key}}`, 'g'), value);
       }
       
+      console.log(`🔹 [RCON] Comando ${i+1}/${commands.length} procesado:`, finalCommand);
+      
       try {
+        console.log(`⚡ [RCON] Enviando comando ${i+1}...`);
         const result = await rcon.send(finalCommand);
+        console.log(`✅ [RCON] Comando ${i+1} ejecutado:`, result || 'OK');
+        
         results.push({
           command: finalCommand,
           response: result || 'OK',
@@ -144,9 +215,11 @@ async function tryExecuteCommands(config, commands, variables) {
         });
         
         if (i < commands.length - 1) {
+          console.log(`⏳ [RCON] Esperando 1.5s antes del siguiente comando...`);
           await new Promise(resolve => setTimeout(resolve, 1500));
         }
       } catch (cmdError) {
+        console.error(`❌ [RCON] Comando ${i+1} falló:`, cmdError.message);
         results.push({
           command: finalCommand,
           error: cmdError.message,
@@ -157,6 +230,7 @@ async function tryExecuteCommands(config, commands, variables) {
     }
 
     const successCount = results.filter(r => r.success).length;
+    console.log(`✅ [RCON] Todos los comandos ejecutados: ${successCount}/${commands.length}`);
 
     return {
       success: true,
@@ -167,18 +241,27 @@ async function tryExecuteCommands(config, commands, variables) {
     };
     
   } catch (error) {
+    console.error('❌ [RCON] Error en tryExecuteCommands:', error.message);
+    console.error('❌ [RCON] Stack:', error.stack);
+    
     return {
       success: false,
       results: results,
       error: error.message,
       message: 'Error ejecutando comandos',
-      details: error.stack
+      details: error.stack,
+      successCount: results.filter(r => r.success).length,
+      failedCount: commands.length - results.filter(r => r.success).length
     };
   } finally {
     if (rcon) {
       try {
+        console.log('🔌 [RCON] Cerrando conexión RCON...');
         await rcon.end();
-      } catch (e) {}
+        console.log('✅ [RCON] Conexión cerrada');
+      } catch (e) {
+        console.error('⚠️ [RCON] Error cerrando conexión:', e.message);
+      }
     }
   }
 }
