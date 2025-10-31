@@ -1567,17 +1567,17 @@ logSupabaseKeys();
 // ============================================
 // CRON WORKER: Entregas automáticas
 // ============================================
-console.log('🚀 Iniciando cron worker de entregas...');
+// console.log('🚀 Iniciando cron worker de entregas...');
 
 // Procesar entregas pendientes cada 1 minuto
-setInterval(async () => {
-  await processePendingDeliveries();
-}, 60000);
+// setInterval(async () => {
+//   await processePendingDeliveries();
+// }, 60000);
 
 // Limpiar entregas antiguas cada 24 horas
-setInterval(async () => {
-  await cleanupOldDeliveries();
-}, 24 * 60 * 60 * 1000);
+// setInterval(async () => {
+//   await cleanupOldDeliveries();
+// }, 24 * 60 * 60 * 1000);
 
 // ------------------------------
 // Iniciar servidor
@@ -1585,4 +1585,3 @@ setInterval(async () => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
-
