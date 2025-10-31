@@ -1127,77 +1127,6 @@ app.get('/api/products/:id', async (req, res) => {
 });
 
 // ========================================
-// CREATE PRODUCT (Gaming & General)
-// ========================================
-app.post(['/api/products', '/api/product', '/api/create-product'], async (req, res) => {
-  try {
-    const { profile_id } = getAuthenticatedUser(req);
-    const b = req.body || {};
-
-    if (!b.name || !b.price || !b.currency) {
-      return res.status(400).json({ error: 'Missing: name, price, currency' });
-    }
-
-    const product = {
-      // dueño
-      seller_id: profile_id,
-      user_id: profile_id,
-
-      // datos básicos
-      name: String(b.name).trim(),
-      description: b.description || '',
-      price: Number(b.price),
-      currency: b.currency || 'USD',
-      duration: b.duration || 'permanent',
-
-      // tipo/categoría
-      type: (b.type === 'general' || b.category === 'general') ? 'general' : 'gaming',
-      category: b.category || ((b.type === 'general') ? 'general' : 'gaming'),
-
-      // media y features
-      image: b.image || null,
-      features: b.features || null,
-
-      // comandos de entrega y config de servidor (si aplica)
-      delivery_commands: Array.isArray(b.commands) ? b.commands : [],
-      server_config: (b.rconHost && b.rconPort && b.rconPassword) ? {
-        ip: b.rconHost,
-        rcon_port: Number(b.rconPort),
-        rcon_password: b.rconPassword
-      } : null,
-
-      status: b.status || 'active'
-    };
-
-    // slug
-    product.slug = (product.name || 'product')
-      .toLowerCase().replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)/g, '').slice(0, 60);
-
-    const { data, error } = await supabaseAdmin
-      .from('products')
-      .insert(product)
-      .select()
-      .single();
-
-    if (error) return res.status(400).json({ error: error.message });
-
-    return res.status(201).json({
-      success: true,
-      id: data.id,
-      productId: data.id,
-      short_code: data.short_code || null
-    });
-  } catch (e) {
-    if (String(e.message || '').toLowerCase().includes('token')) {
-      return res.status(401).json({ error: e.message });
-    }
-    return res.status(500).json({ error: e.message || 'Server error' });
-  }
-});
-
-
-// ========================================
 // SHORT LINKS - Resolver códigos cortos
 // ========================================
 app.get('/api/short/:code', async (req, res) => {
@@ -1226,52 +1155,6 @@ app.get('/api/short/:code', async (req, res) => {
     res.status(500).json({ error: 'Error del servidor' });
   }
 });
-
-// ========================================
-// CREATE / UPSERT SHORT LINK
-// ========================================
-app.post(['/api/short-links', '/api/shortlinks', '/api/links/short'], async (req, res) => {
-  try {
-    const { profile_id } = getAuthenticatedUser(req);
-    const { code, product_id, target_url, active = true } = req.body || {};
-
-    if (!code || (!product_id && !target_url)) {
-      return res.status(400).json({ error: 'Missing code and product_id or target_url' });
-    }
-
-    // intenta deducir product_id desde ?id=... si no vino explícito
-    let pid = product_id;
-    if (!pid && target_url) {
-      const m = String(target_url).match(/[?&]id=([a-f0-9-]{6,})/i);
-      if (m) pid = m[1];
-    }
-
-    const insert = {
-      short_code: code,
-      product_id: pid || null,
-      target_url: target_url || null,
-      owner_id: profile_id,
-      active: !!active
-    };
-
-    const { data, error } = await supabaseAdmin
-      .from('short_links')
-      .upsert(insert, { onConflict: 'short_code' })
-      .select()
-      .single();
-
-    if (error) return res.status(400).json({ error: error.message });
-
-    return res.status(201).json({
-      success: true,
-      short: data.short_code,
-      product_id: data.product_id
-    });
-  } catch (e) {
-    return res.status(500).json({ error: e.message || 'Server error' });
-  }
-});
-
 
 // ========================================
 // CREATE PRODUCT  (evita 404 del front)
@@ -1790,11 +1673,4 @@ processePendingDeliveries();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
-
-
-
-
-
-
-
 
