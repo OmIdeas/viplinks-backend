@@ -130,6 +130,22 @@ router.post('/', async (req, res) => {
     if (isGaming) {
       console.log('🎮 Configurando producto GAMING');
       
+      // ✅ AGREGADO: Guardar server_key y server_id
+      if (req.body.server_key) {
+        productData.server_key = req.body.server_key;
+        console.log('   ✅ server_key:', req.body.server_key);
+      }
+      
+      if (req.body.server_id) {
+        productData.server_id = req.body.server_id;
+        console.log('   ✅ server_id:', req.body.server_id);
+      }
+      
+      if (req.body.delivery_mode) {
+        productData.delivery_mode = req.body.delivery_mode;
+        console.log('   ✅ delivery_mode:', req.body.delivery_mode);
+      }
+      
       // El frontend envía rconHost, rconPort, rconPassword
       // Construir server_config a partir de estos campos
       if (req.body.rconHost && req.body.rconPort && req.body.rconPassword) {
@@ -152,10 +168,11 @@ router.post('/', async (req, res) => {
         console.log('   ⚠️ NO se proporcionó server config');
       }
       
-      productData.delivery_commands = req.body.commands || null;
+      // ✅ CORREGIDO: Usar delivery_commands (no commands)
+      productData.delivery_commands = req.body.delivery_commands || req.body.commands || null;
       
-      if (req.body.commands) {
-        console.log('   ✅ Commands:', req.body.commands);
+      if (productData.delivery_commands) {
+        console.log('   ✅ Delivery Commands:', productData.delivery_commands);
       }
     }
 
