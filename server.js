@@ -59,7 +59,7 @@ app.use('/api/brands', brandsRoutes);
 app.use('/api/servers', serversRoutes);
 app.use('/api/plugin', pluginRoutes);
 
-app.post('/api/plugin/mark-delivered', async (req, res) => {
+async function handlePluginMarkDelivered(req, res) {
   try {
     const { server_key, sale_id, success, error_message } = req.body || {};
 
@@ -70,7 +70,7 @@ app.post('/api/plugin/mark-delivered', async (req, res) => {
       });
     }
 
-    // 1) Buscar la pending_delivery
+    // 1) buscar pending
     const { data: pending, error: pendingError } = await supabaseAdmin
       .from('pending_deliveries')
       .select('id')
@@ -83,7 +83,6 @@ app.post('/api/plugin/mark-delivered', async (req, res) => {
     }
 
     if (pending) {
-      // 2) marcar la pending como completada o fallida
       await supabaseAdmin
         .from('pending_deliveries')
         .update({
@@ -95,7 +94,7 @@ app.post('/api/plugin/mark-delivered', async (req, res) => {
         .eq('id', pending.id);
     }
 
-    // 3) actualizar la venta (si existe)
+    // 2) actualizar venta
     await supabaseAdmin
       .from('sales')
       .update({
@@ -109,7 +108,7 @@ app.post('/api/plugin/mark-delivered', async (req, res) => {
     console.error('[PLUGIN mark-delivered] fatal:', err);
     return res.status(500).json({ success: false, error: 'internal_error' });
   }
-});
+}
 
 // ------------------------------
 // Nodemailer (opcional, solo si hay vars de entorno)
@@ -1614,6 +1613,7 @@ logSupabaseKeys();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
 
 
