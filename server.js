@@ -57,14 +57,14 @@ app.use('/api/products', productsRoutes);
 app.use('/api/webhooks', webhooksRoutes);
 app.use('/api/brands', brandsRoutes);
 app.use('/api/servers', serversRoutes);
-app.use('/api/plugin', pluginRoutes);
 
 // =============================
 // mark-delivered para el plugin
+// (tiene que ir ANTES del app.use('/api/plugin', ...))
 // =============================
 async function handlePluginMarkDelivered(req, res) {
   try {
-    // puede venir por POST (req.body) o por GET (req.query)
+    // puede venir por POST (req.body) o por GET (req.query) porque el proxy a veces lo manda en GET
     const payload =
       (req.body && Object.keys(req.body).length > 0)
         ? req.body
@@ -119,9 +119,12 @@ async function handlePluginMarkDelivered(req, res) {
   }
 }
 
-// ✅ ahora aceptamos las dos rutas y todos los métodos
+// ✅ aceptar las dos rutas y cualquier método (GET/POST)
 app.all('/api/plugin/mark-delivered', handlePluginMarkDelivered);
 app.all('/plugin/mark-delivered', handlePluginMarkDelivered);
+
+// 👇👇 recién acá va el router general de /api/plugin
+app.use('/api/plugin', pluginRoutes);
 
 // ------------------------------
 // Nodemailer (opcional, solo si hay vars de entorno)
@@ -1626,6 +1629,7 @@ logSupabaseKeys();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
 
 
