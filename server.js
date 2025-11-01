@@ -59,12 +59,18 @@ app.use('/api/brands', brandsRoutes);
 app.use('/api/servers', serversRoutes);
 app.use('/api/plugin', pluginRoutes);
 
-app.use('/api/plugin', pluginRoutes);
-
-// mismo handler para las 2 rutas (con y sin /api)
+// =============================
+// mark-delivered para el plugin
+// =============================
 async function handlePluginMarkDelivered(req, res) {
   try {
-    const { server_key, sale_id, success, error_message } = req.body || {};
+    // puede venir por POST (req.body) o por GET (req.query)
+    const payload =
+      (req.body && Object.keys(req.body).length > 0)
+        ? req.body
+        : req.query;
+
+    const { server_key, sale_id, success, error_message } = payload || {};
 
     if (!server_key || !sale_id) {
       return res.status(400).json({
@@ -113,10 +119,9 @@ async function handlePluginMarkDelivered(req, res) {
   }
 }
 
-// ✅ ahora aceptamos las dos
-app.post('/api/plugin/mark-delivered', handlePluginMarkDelivered);
-app.post('/plugin/mark-delivered', handlePluginMarkDelivered);
-
+// ✅ ahora aceptamos las dos rutas y todos los métodos
+app.all('/api/plugin/mark-delivered', handlePluginMarkDelivered);
+app.all('/plugin/mark-delivered', handlePluginMarkDelivered);
 
 // ------------------------------
 // Nodemailer (opcional, solo si hay vars de entorno)
@@ -1621,6 +1626,7 @@ logSupabaseKeys();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
 
 
