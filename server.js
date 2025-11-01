@@ -70,7 +70,7 @@ async function handlePluginMarkDelivered(req, res) {
       });
     }
 
-    // 1) buscar pending
+    // 1) buscar la pending
     const { data: pending, error: pendingError } = await supabaseAdmin
       .from('pending_deliveries')
       .select('id')
@@ -94,7 +94,7 @@ async function handlePluginMarkDelivered(req, res) {
         .eq('id', pending.id);
     }
 
-    // 2) actualizar venta
+    // 2) actualizar la venta
     await supabaseAdmin
       .from('sales')
       .update({
@@ -1613,6 +1613,7 @@ logSupabaseKeys();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
 
 
