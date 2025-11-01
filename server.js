@@ -1461,7 +1461,86 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
 
     console.log('✅ Venta creada:', sale.id);
 
-   if (product.type === 'gaming' && product.server_config) {
+    if (product.type === 'gaming' && product.server_config) {
+      try {
+        console.log('🎮 Intentando entrega RCON...');
+
+        const serverConfig = product.server_config;
+        const commands = product.delivery_commands || [];
+
+        if (!serverConfig.ip || !serverConfig.rcon_port || !serverConfig.rcon_password) {
+          throw new Error('Configuración de servidor incompleta');
+        }
+
+        console.log('🔌 Conectando a:', serverConfig.ip + ':' + serverConfig.rcon_port);
+
+        const rconConfig = {
+          ip: serverConfig.ip,
+          port: parseInt(serverConfig.rcon_port, 10),
+          password: serverConfig.rcon_password
+        };
+
+        console.log('🔧 RCON Config:', { ip: rconConfig.ip, port: rconConfig.port, password: '***' });
+        console.log('📝 Comandos a ejecutar:', commands.length, 'comando(s):', commands);
+
+        const deliveryResult = await executeDeliveryCommands(
+          rconConfig,
+          commands,
+          {
+            steamid: steamId,
+            username: username,
+            email: 'test@testing.com',
+            orderid: sale.id,
+            player: steamId
+          }
+        );
+
+        if (deliveryResult.success) {
+          console.log('✅ Entrega RCON exitosa');
+
+          await supabaseAdmin
+            .from('sales')
+            .update({
+              status: 'completed',
+              kit_delivered: true,
+              delivery_status: 'completed',
+              delivered_at: new Date().toISOString()
+            })
+            .eq('id', sale.id);
+
+          return res.json({
+            success: true,
+            message: '✅ COMPRA SIMULADA Y ENTREGADA EXITOSAMENTE',
+            sale: sale,
+            delivery: deliveryResult
+          });
+        } else {
+          throw new Error(deliveryResult.message || deliveryResult.error || 'Error en entrega');
+        }
+
+      } catch (rconError) {
+        console.error('❌ Error RCON:', rconError.message);
+
+        await supabaseAdmin
+          .from('sales')
+          .update({
+            status: 'failed',
+            delivery_status: 'failed',
+            error_message: rconError.message,
+            notes: `Error RCON de prueba: ${rconError.message}`
+          })
+          .eq('id', sale.id);
+
+        return res.json({
+          success: true,
+          message: '⚠️ Venta creada pero entrega RCON falló',
+          sale: sale,
+          error: rconError.message
+        });
+      }
+    }
+
+    console.log('✅ Producto no requiere entrega RCON');
     return res.json({
       success: true,
       message: '✅ COMPRA SIMULADA (Producto sin RCON)',
@@ -1473,90 +1552,6 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
     res.status(500).json({ error: 'Error en simulación', details: error.message });
   }
 });
-
-// ===== Dashboard: resumen (plan y flags) =====
-app.get('/api/dashboard/summary', async (req, res) => {
-  try {
-    const { profile_id } = getAuthenticatedUser(req);
-
-    const { data: profile, error } = await supabaseAdmin
-      .from('profiles')
-      .select('plan, service, guarantees_enabled, shop_enabled')
-      .eq('id', profile_id)
-      .maybeSingle();
-
-    if (error) throw error;
-
-    res.json({
-      guarantees_enabled: !!profile?.guarantees_enabled,
-      shop_enabled: !!profile?.shop_enabled,
-      service: profile?.service || profile?.plan || 'free'
-    });
-  } catch (e) {
-    res.status(401).json({ success: false, error: e.message });
-  }
-});
-
-// ===== Dashboard: garantías (resumen y montos) =====
-app.get('/api/dashboard/guarantees', async (req, res) => {
-  try {
-    const { profile_id } = getAuthenticatedUser(req);
-
-    const [{ data: products, error: e1 }, { data: sales, error: e2 }] = await Promise.all([
-      supabaseAdmin
-        .from('products')
-        .select('id, has_guarantee')
-        .eq('seller_id', profile_id),
-      supabaseAdmin
-        .from('sales')
-        .select('amount, commission, seller_amount, status, created_at')
-        .eq('seller_id', profile_id)
-    ]);
-    if (e1) throw e1;
-    if (e2) throw e2;
-
-    const products_with = (products || []).filter(p => p.has_guarantee).length;
-    const products_without = (products || []).length - products_with;
-
-    const pending = (sales || []).filter(s => s.status === 'pending');
-    const released = (sales || []).filter(s => s.status === 'completed');
-
-    const hold_gross = pending.reduce((a, s) => a + Number(s.amount || 0), 0);
-    const hold_net = pending.reduce((a, s) => {
-      const amount = Number(s.amount || 0);
-      const commission = Number(s.commission || 0);
-      const seller_amount = s.seller_amount != null ? Number(s.seller_amount) : (amount - commission);
-      return a + seller_amount;
-    }, 0);
-
-    const released_net = released.reduce((a, s) => {
-      const amount = Number(s.amount || 0);
-      const commission = Number(s.commission || 0);
-      const seller_amount = s.seller_amount != null ? Number(s.seller_amount) : (amount - commission);
-      return a + seller_amount;
-    }, 0);
-
-    const next_release_at = pending.length ? pending[0].created_at : null;
-
-    res.json({
-      products_with,
-      products_without,
-      on_hold: {
-        count: pending.length,
-        gross_usd: hold_gross,
-        net_usd: hold_net,
-        next_release_at
-      },
-      released: {
-        count: released.length,
-        net_usd: released_net
-      }
-    });
-  } catch (e) {
-    res.status(401).json({ success: false, error: e.message });
-  }
-});
-
 
 // ===== 404 para rutas de /api que no existen (debe ir al final) =====
 app.use('/api', (req, res) => {
@@ -1590,7 +1585,3 @@ logSupabaseKeys();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
-
-
-
-
