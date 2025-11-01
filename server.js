@@ -1547,7 +1547,7 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
 
     // 3) resolver server_key
     const productServerCfg = product.server_config || {};
-    let finalServerKey = serverKeyFromBody || productServerCfg.server_key;
+    let finalServerKey = serverKeyFromBody || product.server_key || productServerCfg.server_key;
 
     // si todavía no hay, buscamos servers del dueño
     if (!finalServerKey && product.user_id) {
@@ -1664,15 +1664,3 @@ logSupabaseKeys();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
-
-
-
-
-
-
-
-
-
-
-
-
