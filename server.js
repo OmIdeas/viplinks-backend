@@ -1397,6 +1397,7 @@ app.get('/api/cron/process-deliveries', async (req, res) => {
 
 // ============================================
 // 🧪 ENDPOINT DE TESTING - SIMULAR COMPRA
+// VERSION PLUGIN-ONLY (sin RCON del backend)
 // ============================================
 app.post('/api/test/simulate-purchase', async (req, res) => {
   try {
@@ -1416,7 +1417,7 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
 
     console.log('📦 Producto encontrado:', product.name || product.title);
     console.log('🔍 DEBUG - Producto completo:', JSON.stringify(product, null, 2));
-    console.log('📋 Comandos encontrados:', product.commands);
+    console.log('📋 Comandos encontrados:', product.delivery_commands);
 
     const isGaming = product.type === 'gaming' || product.category === 'gaming';
     let commissionRate = 0;
@@ -1461,89 +1462,64 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
 
     console.log('✅ Venta creada:', sale.id);
 
-    if (product.type === 'gaming' && product.server_config) {
-      try {
-        console.log('🎮 Intentando entrega RCON...');
+    // ✅ PROCESAR ENTREGA GAMING - SOLO CREAR pending_delivery (PLUGIN LO PROCESARÁ)
+    if (product.type === 'gaming' && product.server_config && product.delivery_commands?.length > 0) {
+      console.log('🎮 Producto gaming detectado - Creando pending_delivery para el plugin...');
 
-        const serverConfig = product.server_config;
-        const commands = product.delivery_commands || [];
+      const serverConfig = product.server_config;
 
-        if (!serverConfig.ip || !serverConfig.rcon_port || !serverConfig.rcon_password) {
-          throw new Error('Configuración de servidor incompleta');
-        }
+      // ✅ SOLO CREAR pending_delivery - El plugin lo procesará
+      const { error: pendingError } = await supabaseAdmin
+        .from('pending_deliveries')
+        .insert({
+          sale_id: sale.id,
+          server_key: serverConfig.server_key || 'default',
+          steam_id: steamId,
+          username: username,
+          product_name: product.name,
+          commands: product.delivery_commands,
+          server_config: {
+            ip: serverConfig.ip,
+            rcon_port: serverConfig.rcon_port || serverConfig.port,
+            rcon_password: serverConfig.rcon_password || serverConfig.password
+          },
+          requires_inventory: product.requires_inventory || false,
+          status: 'pending',
+          attempts: 0,
+          created_at: new Date().toISOString()
+        });
 
-        console.log('🔌 Conectando a:', serverConfig.ip + ':' + serverConfig.rcon_port);
-
-        const rconConfig = {
-          ip: serverConfig.ip,
-          port: parseInt(serverConfig.rcon_port, 10),
-          password: serverConfig.rcon_password
-        };
-
-        console.log('🔧 RCON Config:', { ip: rconConfig.ip, port: rconConfig.port, password: '***' });
-        console.log('📝 Comandos a ejecutar:', commands.length, 'comando(s):', commands);
-
-        const deliveryResult = await executeDeliveryCommands(
-          rconConfig,
-          commands,
-          {
-            steamid: steamId,
-            username: username,
-            email: 'test@testing.com',
-            orderid: sale.id,
-            player: steamId
-          }
-        );
-
-        if (deliveryResult.success) {
-          console.log('✅ Entrega RCON exitosa');
-
-          await supabaseAdmin
-            .from('sales')
-            .update({
-              status: 'completed',
-              kit_delivered: true,
-              delivery_status: 'completed',
-              delivered_at: new Date().toISOString()
-            })
-            .eq('id', sale.id);
-
-          return res.json({
-            success: true,
-            message: '✅ COMPRA SIMULADA Y ENTREGADA EXITOSAMENTE',
-            sale: sale,
-            delivery: deliveryResult
-          });
-        } else {
-          throw new Error(deliveryResult.message || deliveryResult.error || 'Error en entrega');
-        }
-
-      } catch (rconError) {
-        console.error('❌ Error RCON:', rconError.message);
-
-        await supabaseAdmin
-          .from('sales')
-          .update({
-            status: 'failed',
-            delivery_status: 'failed',
-            error_message: rconError.message,
-            notes: `Error RCON de prueba: ${rconError.message}`
-          })
-          .eq('id', sale.id);
-
-        return res.json({
-          success: true,
-          message: '⚠️ Venta creada pero entrega RCON falló',
-          sale: sale,
-          error: rconError.message
+      if (pendingError) {
+        console.error('❌ Error creando pending_delivery:', pendingError);
+        return res.status(500).json({ 
+          error: 'Error creando pending_delivery', 
+          details: pendingError 
         });
       }
+
+      console.log('✅ Pending delivery creada - El plugin la procesará en máximo 3 minutos');
+
+      // Marcar venta como pending (esperando entrega del plugin)
+      await supabaseAdmin
+        .from('sales')
+        .update({
+          delivery_status: 'pending',
+          notes: 'Entrega delegada al plugin del servidor (test mode)'
+        })
+        .eq('id', sale.id);
+
+      return res.json({
+        success: true,
+        message: '✅ COMPRA SIMULADA - Pending delivery creada para el plugin',
+        sale: sale,
+        info: 'El plugin procesará la entrega en máximo 3 minutos'
+      });
     }
 
-    console.log('✅ Producto no requiere entrega RCON');
+    console.log('✅ Producto no requiere entrega automática');
     return res.json({
       success: true,
-      message: '✅ COMPRA SIMULADA (Producto sin RCON)',
+      message: '✅ COMPRA SIMULADA (Producto sin entrega automática)',
       sale: sale
     });
 
@@ -1585,3 +1561,4 @@ logSupabaseKeys();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
