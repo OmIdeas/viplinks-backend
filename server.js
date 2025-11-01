@@ -59,6 +59,9 @@ app.use('/api/brands', brandsRoutes);
 app.use('/api/servers', serversRoutes);
 app.use('/api/plugin', pluginRoutes);
 
+app.use('/api/plugin', pluginRoutes);
+
+// mismo handler para las 2 rutas (con y sin /api)
 async function handlePluginMarkDelivered(req, res) {
   try {
     const { server_key, sale_id, success, error_message } = req.body || {};
@@ -109,6 +112,11 @@ async function handlePluginMarkDelivered(req, res) {
     return res.status(500).json({ success: false, error: 'internal_error' });
   }
 }
+
+// ✅ ahora aceptamos las dos
+app.post('/api/plugin/mark-delivered', handlePluginMarkDelivered);
+app.post('/plugin/mark-delivered', handlePluginMarkDelivered);
+
 
 // ------------------------------
 // Nodemailer (opcional, solo si hay vars de entorno)
@@ -1613,6 +1621,7 @@ logSupabaseKeys();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
 
 
