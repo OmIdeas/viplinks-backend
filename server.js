@@ -1488,9 +1488,10 @@ res.json({
 // ============================================
 app.post('/api/test/simulate-purchase', async (req, res) => {
   try {
-    const { productId, steamId, username } = req.body;
+    // 👇 ahora también recibimos server_key
+    const { productId, steamId, username, server_key: serverKeyFromBody } = req.body;
 
-    console.log('🧪 TESTING - Simulando compra:', { productId, steamId, username });
+    console.log('🧪 TESTING - Simulando compra:', { productId, steamId, username, serverKeyFromBody });
 
     const { data: product, error: productError } = await supabaseAdmin
       .from('products')
@@ -1553,15 +1554,27 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
     if (product.type === 'gaming' && product.server_config && product.delivery_commands?.length > 0) {
       console.log('🎮 Producto gaming detectado - Creando pending_delivery para el plugin...');
 
-      const serverConfig = product.server_config;
+      const serverConfig = product.server_config || {};
+
+      // 1) prioridad: lo que mandó el panel en el body
+      // 2) si no, lo que estaba guardado en el producto
+      const finalServerKey = serverKeyFromBody || serverConfig.server_key;
+
+      if (!finalServerKey) {
+        console.error('❌ No hay server_key ni en el body ni en el producto');
+        return res.status(400).json({
+          success: false,
+          error: 'Falta server_key. Enviá server_key en el body o asociá un server al producto.'
+        });
+      }
 
       // ✅ SOLO CREAR pending_delivery - El plugin lo procesará
       const { error: pendingError } = await supabaseAdmin
         .from('pending_deliveries')
         .insert({
-          sale_id: sale.id,
+          sale_id: sale.id,                 // 👈 UUID real de la venta
           product_id: productId,
-          server_key: serverConfig.server_key || 'default',
+          server_key: finalServerKey,       // 👈 AHORA SÍ va la key real
           steam_id: steamId,
           username: username,
           product_name: product.name,
@@ -1579,9 +1592,9 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
 
       if (pendingError) {
         console.error('❌ Error creando pending_delivery:', pendingError);
-        return res.status(500).json({ 
-          error: 'Error creando pending_delivery', 
-          details: pendingError 
+        return res.status(500).json({
+          error: 'Error creando pending_delivery',
+          details: pendingError
         });
       }
 
@@ -1649,6 +1662,7 @@ logSupabaseKeys();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
 
 
