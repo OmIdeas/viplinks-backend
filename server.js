@@ -1399,59 +1399,79 @@ app.get('/api/cron/process-deliveries', async (req, res) => {
     }
 
     const { data: deliveries, error } = await supabaseAdmin
+  .from('pending_deliveries')
+  .select('*')
+  .eq('status', 'pending')
+  .order('created_at', { ascending: true })
+  .limit(50);
+
+if (error) throw error;
+
+if (!deliveries || deliveries.length === 0) {
+  console.log('✅ No hay entregas pendientes');
+  return res.json({
+    success: true,
+    message: 'No hay entregas pendientes',
+    processed: 0
+  });
+}
+
+console.log(`📋 ${deliveries.length} entregas pendientes`);
+
+let completed = 0, failed = 0, retrying = 0;
+
+for (const delivery of deliveries) {
+
+  // 👇👇👇 AGREGADO IMPORTANTE 👇👇👇
+  // si esta entrega NO tiene datos de RCON, significa que la hicimos
+  // "para que la entregue el plugin", así que NO intentamos RCON.
+  if (!delivery.rcon_host || !delivery.rcon_port || !delivery.rcon_password) {
+    console.log(`🔁 ${delivery.id.slice(0, 8)}… entrega delegada al plugin (sin RCON)`);
+
+    // marcamos que la vimos, así el worker no la vuelve a tocar cada segundo
+    await supabaseAdmin
       .from('pending_deliveries')
-      .select('*')
-      .eq('status', 'pending')
-      .order('created_at', { ascending: true })
-      .limit(50);
+      .update({
+        last_attempt: new Date().toISOString()
+      })
+      .eq('id', delivery.id);
 
-    if (error) throw error;
+    // y pasamos a la siguiente
+    continue;
+  }
+  // 👆👆👆 FIN DEL AGREGADO 👆👆👆
 
-    if (!deliveries || deliveries.length === 0) {
-      console.log('✅ No hay entregas pendientes');
-      return res.json({
-        success: true,
-        message: 'No hay entregas pendientes',
-        processed: 0
-      });
+  if (delivery.last_attempt) {
+    const lastAttempt = new Date(delivery.last_attempt);
+    const minutesSince = (Date.now() - lastAttempt.getTime()) / 1000 / 60;
+    const requiredDelay = getNextAttemptDelay(delivery.created_at);
+
+    if (minutesSince < requiredDelay) {
+      const waitTime = Math.ceil(requiredDelay - minutesSince);
+      console.log(`⏸️ ${delivery.id.slice(0, 8)}... - Próximo en ${waitTime} min`);
+      continue;
     }
+  }
 
-    console.log(`📋 ${deliveries.length} entregas pendientes`);
+  const result = await processDelivery(delivery);
 
-    let completed = 0, failed = 0, retrying = 0;
+  if (result.success) completed++;
+  else if (result.expired) failed++;
+  else retrying++;
 
-    for (const delivery of deliveries) {
-      if (delivery.last_attempt) {
-        const lastAttempt = new Date(delivery.last_attempt);
-        const minutesSince = (Date.now() - lastAttempt.getTime()) / 1000 / 60;
-        const requiredDelay = getNextAttemptDelay(delivery.created_at);
+  await new Promise(resolve => setTimeout(resolve, 3000));
+}
 
-        if (minutesSince < requiredDelay) {
-          const waitTime = Math.ceil(requiredDelay - minutesSince);
-          console.log(`⏸️ ${delivery.id.slice(0, 8)}... - Próximo en ${waitTime} min`);
-          continue;
-        }
-      }
+console.log(`\n📊 Resumen: ✅ ${completed} | ❌ ${failed} | 🔄 ${retrying}`);
 
-      const result = await processDelivery(delivery);
-
-      if (result.success) completed++;
-      else if (result.expired) failed++;
-      else retrying++;
-
-      await new Promise(resolve => setTimeout(resolve, 3000));
-    }
-
-    console.log(`\n📊 Resumen: ✅ ${completed} | ❌ ${failed} | 🔄 ${retrying}`);
-
-    res.json({
-      success: true,
-      message: 'Worker ejecutado',
-      completed,
-      failed,
-      retrying,
-      total: deliveries.length
-    });
+res.json({
+  success: true,
+  message: 'Worker ejecutado',
+  completed,
+  failed,
+  retrying,
+  total: deliveries.length
+});
 
   } catch (error) {
     console.error('❌ Error en worker:', error);
@@ -1629,6 +1649,7 @@ logSupabaseKeys();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
 
 
