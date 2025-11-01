@@ -1473,6 +1473,7 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
         .from('pending_deliveries')
         .insert({
           sale_id: sale.id,
+          product_id: productId,
           server_key: serverConfig.server_key || 'default',
           steam_id: steamId,
           username: username,
@@ -1561,4 +1562,5 @@ logSupabaseKeys();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
