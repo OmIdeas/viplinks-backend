@@ -59,6 +59,58 @@ app.use('/api/brands', brandsRoutes);
 app.use('/api/servers', serversRoutes);
 app.use('/api/plugin', pluginRoutes);
 
+app.post('/api/plugin/mark-delivered', async (req, res) => {
+  try {
+    const { server_key, sale_id, success, error_message } = req.body || {};
+
+    if (!server_key || !sale_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'missing server_key or sale_id'
+      });
+    }
+
+    // 1) Buscar la pending_delivery
+    const { data: pending, error: pendingError } = await supabaseAdmin
+      .from('pending_deliveries')
+      .select('id')
+      .eq('server_key', server_key)
+      .eq('sale_id', sale_id)
+      .maybeSingle();
+
+    if (pendingError) {
+      console.error('[PLUGIN mark-delivered] error buscando pending_deliveries:', pendingError);
+    }
+
+    if (pending) {
+      // 2) marcar la pending como completada o fallida
+      await supabaseAdmin
+        .from('pending_deliveries')
+        .update({
+          status: success ? 'completed' : 'failed',
+          delivered_at: new Date().toISOString(),
+          last_attempt: new Date().toISOString(),
+          error_message: success ? null : (error_message || 'plugin reported failure')
+        })
+        .eq('id', pending.id);
+    }
+
+    // 3) actualizar la venta (si existe)
+    await supabaseAdmin
+      .from('sales')
+      .update({
+        delivery_status: success ? 'completed' : 'failed',
+        delivery_error: success ? null : (error_message || 'plugin reported failure')
+      })
+      .eq('sale_id', sale_id);
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[PLUGIN mark-delivered] fatal:', err);
+    return res.status(500).json({ success: false, error: 'internal_error' });
+  }
+});
+
 // ------------------------------
 // Nodemailer (opcional, solo si hay vars de entorno)
 // ------------------------------
@@ -1562,5 +1614,6 @@ logSupabaseKeys();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
 
