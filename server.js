@@ -1488,12 +1488,11 @@ res.json({
 // ============================================
 app.post('/api/test/simulate-purchase', async (req, res) => {
   try {
-    // ahora también puedo recibir server_key desde el front
     const { productId, steamId, username, server_key: serverKeyFromBody } = req.body;
 
     console.log('🧪 TESTING - Simulando compra:', { productId, steamId, username, serverKeyFromBody });
 
-    // 1) Traer el producto
+    // 1) traer producto
     const { data: product, error: productError } = await supabaseAdmin
       .from('products')
       .select('*')
@@ -1504,19 +1503,17 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
       return res.status(404).json({ error: 'Producto no encontrado' });
     }
 
-    console.log('📦 Producto encontrado:', product.name || product.title);
-
+    // 2) crear venta
     const isGaming = product.type === 'gaming' || product.category === 'gaming';
-    let commissionRate = isGaming ? 0.013 : 0.07;
+    const commissionRate = isGaming ? 0.013 : 0.07;
     const commission = product.price * commissionRate;
     const sellerAmount = product.price - commission;
 
-    // 2) Crear la venta
     const { data: sale, error: saleError } = await supabaseAdmin
       .from('sales')
       .insert({
         product_id: productId,
-        seller_id: product.user_id,          // <- dueño del producto
+        seller_id: product.user_id,
         buyer_email: `test_${steamId}@testing.com`,
         buyer_steam_id: steamId,
         buyer_username: username,
@@ -1539,71 +1536,65 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
       return res.status(500).json({ error: 'Error creando orden de prueba', details: saleError });
     }
 
-    console.log('✅ Venta creada:', sale.id);
-
-    // 3) Si NO es gaming o no tiene comandos, ya está
+    // si no es gaming o no tiene comandos, terminamos acá
     if (!(product.type === 'gaming' && product.delivery_commands?.length > 0)) {
       return res.json({
         success: true,
         message: '✅ COMPRA SIMULADA (Producto sin entrega automática)',
-        sale: sale
+        sale
       });
     }
 
-    // 4) DETERMINAR LA SERVER_KEY
-    const serverConfig = product.server_config || {};
+    // 3) resolver server_key
+    const productServerCfg = product.server_config || {};
+    let finalServerKey = serverKeyFromBody || productServerCfg.server_key;
 
-    // (1) prioridad: lo que mandó el front
-    let finalServerKey = serverKeyFromBody;
-
-    // (2) si no mandó el front, uso la del producto
-    if (!finalServerKey && serverConfig.server_key) {
-      finalServerKey = serverConfig.server_key;
-    }
-
-    // (3) si tampoco hay en el producto, BUSCO el server del dueño del producto
+    // si todavía no hay, buscamos servers del dueño
     if (!finalServerKey && product.user_id) {
-      console.log('🔎 Buscando server del dueño del producto...', product.user_id);
       const { data: ownerServers, error: ownerServersErr } = await supabaseAdmin
         .from('servers')
         .select('server_key')
-        .eq('user_id', product.user_id)
-        .limit(1);
+        .eq('user_id', product.user_id);
 
       if (ownerServersErr) {
-        console.error('❌ Error buscando server del dueño:', ownerServersErr);
-      } else if (ownerServers && ownerServers.length > 0) {
+        console.error('❌ Error buscando servers del dueño:', ownerServersErr);
+      } else if (ownerServers && ownerServers.length === 1) {
+        // ✅ solo 1 server → lo usamos
         finalServerKey = ownerServers[0].server_key;
-        console.log('✅ Server del dueño encontrado:', finalServerKey);
-      } else {
-        console.log('⚠️ El dueño del producto no tiene servidores guardados');
+      } else if (ownerServers && ownerServers.length > 1) {
+        // ❗️tiene varios → que el vendedor elija en el producto
+        return res.status(400).json({
+          success: false,
+          error: 'El usuario tiene más de un servidor registrado y el producto no tiene server asignado.',
+          fix: 'Editá el producto y elegí el servidor destino.',
+          servers: ownerServers
+        });
       }
     }
 
-    // (4) si después de las 3 opciones NO HAY, avisamos
     if (!finalServerKey) {
-      console.error('❌ No hay server_key ni en el body, ni en el producto, ni en los servers del dueño');
       return res.status(400).json({
         success: false,
-        error: 'No se encontró ninguna server_key. Enviá server_key en el body o asociá un server al producto.'
+        error: 'No se encontró ninguna server_key para este producto.',
+        fix: 'Mandá server_key en el body o guardá un server en el producto.'
       });
     }
 
-    // 5) Crear la pending_delivery que sí va a ver el plugin
+    // 4) crear pending_delivery con la key correcta
     const { error: pendingError } = await supabaseAdmin
       .from('pending_deliveries')
       .insert({
-        sale_id: sale.id,                 // UUID real de la venta
+        sale_id: sale.id,
         product_id: productId,
-        server_key: finalServerKey,       // 👈 ahora sí la key real
+        server_key: finalServerKey,
         steam_id: steamId,
         username: username,
         product_name: product.name,
         commands: product.delivery_commands,
         server_config: {
-          ip: serverConfig.ip,
-          rcon_port: serverConfig.rcon_port || serverConfig.port,
-          rcon_password: serverConfig.rcon_password || serverConfig.password
+          ip: productServerCfg.ip,
+          rcon_port: productServerCfg.rcon_port || productServerCfg.port,
+          rcon_password: productServerCfg.rcon_password || productServerCfg.password
         },
         requires_inventory: product.requires_inventory || false,
         status: 'pending',
@@ -1619,9 +1610,7 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
       });
     }
 
-    console.log('✅ Pending delivery creada - El plugin la procesará en máximo 3 minutos');
-
-    // 6) Actualizar venta como pendiente por plugin
+    // 5) actualizar venta
     await supabaseAdmin
       .from('sales')
       .update({
@@ -1633,7 +1622,7 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
     return res.json({
       success: true,
       message: '✅ COMPRA SIMULADA - Pending delivery creada para el plugin',
-      sale: sale,
+      sale,
       info: 'El plugin procesará la entrega en máximo 3 minutos'
     });
 
@@ -1642,7 +1631,6 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
     res.status(500).json({ error: 'Error en simulación', details: error.message });
   }
 });
-
 
 // ===== 404 para rutas de /api que no existen (debe ir al final) =====
 app.use('/api', (req, res) => {
@@ -1676,6 +1664,7 @@ logSupabaseKeys();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
 
 
