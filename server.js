@@ -1488,11 +1488,12 @@ res.json({
 // ============================================
 app.post('/api/test/simulate-purchase', async (req, res) => {
   try {
-    // 👇 ahora también recibimos server_key
+    // ahora también puedo recibir server_key desde el front
     const { productId, steamId, username, server_key: serverKeyFromBody } = req.body;
 
     console.log('🧪 TESTING - Simulando compra:', { productId, steamId, username, serverKeyFromBody });
 
+    // 1) Traer el producto
     const { data: product, error: productError } = await supabaseAdmin
       .from('products')
       .select('*')
@@ -1504,28 +1505,18 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
     }
 
     console.log('📦 Producto encontrado:', product.name || product.title);
-    console.log('🔍 DEBUG - Producto completo:', JSON.stringify(product, null, 2));
-    console.log('📋 Comandos encontrados:', product.delivery_commands);
 
     const isGaming = product.type === 'gaming' || product.category === 'gaming';
-    let commissionRate = 0;
-
-    if (isGaming) {
-      commissionRate = 0.013; // 1.3% para gaming
-    } else {
-      commissionRate = 0.07;  // 7% para generales
-    }
-
+    let commissionRate = isGaming ? 0.013 : 0.07;
     const commission = product.price * commissionRate;
     const sellerAmount = product.price - commission;
 
-    console.log(`💰 Precio: $${product.price} | Comisión (${commissionRate * 100}%): $${commission.toFixed(2)} | Vendedor: $${sellerAmount.toFixed(2)}`);
-
+    // 2) Crear la venta
     const { data: sale, error: saleError } = await supabaseAdmin
       .from('sales')
       .insert({
         product_id: productId,
-        seller_id: product.user_id,
+        seller_id: product.user_id,          // <- dueño del producto
         buyer_email: `test_${steamId}@testing.com`,
         buyer_steam_id: steamId,
         buyer_username: username,
@@ -1550,78 +1541,100 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
 
     console.log('✅ Venta creada:', sale.id);
 
-    // ✅ PROCESAR ENTREGA GAMING - SOLO CREAR pending_delivery (PLUGIN LO PROCESARÁ)
-    if (product.type === 'gaming' && product.server_config && product.delivery_commands?.length > 0) {
-      console.log('🎮 Producto gaming detectado - Creando pending_delivery para el plugin...');
-
-      const serverConfig = product.server_config || {};
-
-      // 1) prioridad: lo que mandó el panel en el body
-      // 2) si no, lo que estaba guardado en el producto
-      const finalServerKey = serverKeyFromBody || serverConfig.server_key;
-
-      if (!finalServerKey) {
-        console.error('❌ No hay server_key ni en el body ni en el producto');
-        return res.status(400).json({
-          success: false,
-          error: 'Falta server_key. Enviá server_key en el body o asociá un server al producto.'
-        });
-      }
-
-      // ✅ SOLO CREAR pending_delivery - El plugin lo procesará
-      const { error: pendingError } = await supabaseAdmin
-        .from('pending_deliveries')
-        .insert({
-          sale_id: sale.id,                 // 👈 UUID real de la venta
-          product_id: productId,
-          server_key: finalServerKey,       // 👈 AHORA SÍ va la key real
-          steam_id: steamId,
-          username: username,
-          product_name: product.name,
-          commands: product.delivery_commands,
-          server_config: {
-            ip: serverConfig.ip,
-            rcon_port: serverConfig.rcon_port || serverConfig.port,
-            rcon_password: serverConfig.rcon_password || serverConfig.password
-          },
-          requires_inventory: product.requires_inventory || false,
-          status: 'pending',
-          attempts: 0,
-          created_at: new Date().toISOString()
-        });
-
-      if (pendingError) {
-        console.error('❌ Error creando pending_delivery:', pendingError);
-        return res.status(500).json({
-          error: 'Error creando pending_delivery',
-          details: pendingError
-        });
-      }
-
-      console.log('✅ Pending delivery creada - El plugin la procesará en máximo 3 minutos');
-
-      // Marcar venta como pending (esperando entrega del plugin)
-      await supabaseAdmin
-        .from('sales')
-        .update({
-          delivery_status: 'pending',
-          notes: 'Entrega delegada al plugin del servidor (test mode)'
-        })
-        .eq('id', sale.id);
-
+    // 3) Si NO es gaming o no tiene comandos, ya está
+    if (!(product.type === 'gaming' && product.delivery_commands?.length > 0)) {
       return res.json({
         success: true,
-        message: '✅ COMPRA SIMULADA - Pending delivery creada para el plugin',
-        sale: sale,
-        info: 'El plugin procesará la entrega en máximo 3 minutos'
+        message: '✅ COMPRA SIMULADA (Producto sin entrega automática)',
+        sale: sale
       });
     }
 
-    console.log('✅ Producto no requiere entrega automática');
+    // 4) DETERMINAR LA SERVER_KEY
+    const serverConfig = product.server_config || {};
+
+    // (1) prioridad: lo que mandó el front
+    let finalServerKey = serverKeyFromBody;
+
+    // (2) si no mandó el front, uso la del producto
+    if (!finalServerKey && serverConfig.server_key) {
+      finalServerKey = serverConfig.server_key;
+    }
+
+    // (3) si tampoco hay en el producto, BUSCO el server del dueño del producto
+    if (!finalServerKey && product.user_id) {
+      console.log('🔎 Buscando server del dueño del producto...', product.user_id);
+      const { data: ownerServers, error: ownerServersErr } = await supabaseAdmin
+        .from('servers')
+        .select('server_key')
+        .eq('user_id', product.user_id)
+        .limit(1);
+
+      if (ownerServersErr) {
+        console.error('❌ Error buscando server del dueño:', ownerServersErr);
+      } else if (ownerServers && ownerServers.length > 0) {
+        finalServerKey = ownerServers[0].server_key;
+        console.log('✅ Server del dueño encontrado:', finalServerKey);
+      } else {
+        console.log('⚠️ El dueño del producto no tiene servidores guardados');
+      }
+    }
+
+    // (4) si después de las 3 opciones NO HAY, avisamos
+    if (!finalServerKey) {
+      console.error('❌ No hay server_key ni en el body, ni en el producto, ni en los servers del dueño');
+      return res.status(400).json({
+        success: false,
+        error: 'No se encontró ninguna server_key. Enviá server_key en el body o asociá un server al producto.'
+      });
+    }
+
+    // 5) Crear la pending_delivery que sí va a ver el plugin
+    const { error: pendingError } = await supabaseAdmin
+      .from('pending_deliveries')
+      .insert({
+        sale_id: sale.id,                 // UUID real de la venta
+        product_id: productId,
+        server_key: finalServerKey,       // 👈 ahora sí la key real
+        steam_id: steamId,
+        username: username,
+        product_name: product.name,
+        commands: product.delivery_commands,
+        server_config: {
+          ip: serverConfig.ip,
+          rcon_port: serverConfig.rcon_port || serverConfig.port,
+          rcon_password: serverConfig.rcon_password || serverConfig.password
+        },
+        requires_inventory: product.requires_inventory || false,
+        status: 'pending',
+        attempts: 0,
+        created_at: new Date().toISOString()
+      });
+
+    if (pendingError) {
+      console.error('❌ Error creando pending_delivery:', pendingError);
+      return res.status(500).json({
+        error: 'Error creando pending_delivery',
+        details: pendingError
+      });
+    }
+
+    console.log('✅ Pending delivery creada - El plugin la procesará en máximo 3 minutos');
+
+    // 6) Actualizar venta como pendiente por plugin
+    await supabaseAdmin
+      .from('sales')
+      .update({
+        delivery_status: 'pending',
+        notes: 'Entrega delegada al plugin del servidor (test mode)'
+      })
+      .eq('id', sale.id);
+
     return res.json({
       success: true,
-      message: '✅ COMPRA SIMULADA (Producto sin entrega automática)',
-      sale: sale
+      message: '✅ COMPRA SIMULADA - Pending delivery creada para el plugin',
+      sale: sale,
+      info: 'El plugin procesará la entrega en máximo 3 minutos'
     });
 
   } catch (error) {
@@ -1629,6 +1642,7 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
     res.status(500).json({ error: 'Error en simulación', details: error.message });
   }
 });
+
 
 // ===== 404 para rutas de /api que no existen (debe ir al final) =====
 app.use('/api', (req, res) => {
@@ -1662,6 +1676,7 @@ logSupabaseKeys();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
 
 
