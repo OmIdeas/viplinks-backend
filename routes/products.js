@@ -141,11 +141,6 @@ router.post('/', async (req, res) => {
         console.log('   ✅ server_id:', req.body.server_id);
       }
       
-      if (req.body.delivery_mode) {
-        productData.delivery_mode = req.body.delivery_mode;
-        console.log('   ✅ delivery_mode:', req.body.delivery_mode);
-      }
-      
       // El frontend envía rconHost, rconPort, rconPassword
       // Construir server_config a partir de estos campos
       if (req.body.rconHost && req.body.rconPort && req.body.rconPassword) {
