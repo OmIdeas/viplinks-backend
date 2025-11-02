@@ -34,6 +34,7 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors({
   origin: [
+    '*',
     'https://app.viplinks.org',
     'https://viplinks.org',
     'https://www.viplinks.org',
@@ -1664,3 +1665,4 @@ logSupabaseKeys();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
