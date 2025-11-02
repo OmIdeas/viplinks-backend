@@ -1016,8 +1016,15 @@ app.post('/api/rcon/test-execute', async (req, res) => {
 // ------------------------------
 app.get('/api/dashboard/stats', async (req, res) => {
   try {
+    // 1. AUTENTICACIÓN MEJORADA: Si el token es inválido, salimos con 401.
     const { profile_id } = getAuthenticatedUser(req);
 
+    if (!profile_id) {
+      // Aunque getAuthenticatedUser debería lanzar el error, aseguramos la salida.
+      return res.status(401).json({ success: false, error: 'Token inválido o expirado' });
+    }
+    
+    // El resto de la lógica de base de datos sigue igual
     const { data: products, error: productsError } = await supabaseAdmin
       .from('products')
       .select('*')
@@ -1095,9 +1102,15 @@ app.get('/api/dashboard/stats', async (req, res) => {
       pendingSalesCount: pendingSales.length
     };
 
-    res.json({ success: true, stats });
+    // 2. RETORNO EXITOSO
+    return res.json({ success: true, stats });
   } catch (error) {
-    res.status(401).json({ success: false, error: error.message });
+    // 3. GESTIÓN DE ERROR (Asegura un JSON válido en caso de error)
+    if (error.message.includes('Invalid token') || error.message.includes('No token')) {
+      return res.status(401).json({ success: false, error: 'Token inválido o expirado' });
+    }
+    console.error('❌ Error en /api/dashboard/stats:', error);
+    return res.status(500).json({ success: false, error: error.message || 'Error del servidor al calcular estadísticas' });
   }
 });
 
@@ -1661,5 +1674,6 @@ logSupabaseKeys();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
 
