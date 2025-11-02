@@ -72,16 +72,7 @@ async function handlePluginMarkDelivered(req, res) {
 
     const { server_key, sale_id, success, error_message } = payload || {};
 
-    console.log('🔔 [PLUGIN mark-delivered] REQUEST:', {
-      server_key: server_key ? server_key.substring(0, 15) + '...' : 'MISSING',
-      sale_id,
-      success,
-      error_message,
-      method: req.method
-    });
-
     if (!server_key || !sale_id) {
-      console.log('❌ [PLUGIN mark-delivered] Faltan parámetros');
       return res.status(400).json({
         success: false,
         error: 'missing server_key or sale_id'
@@ -89,22 +80,19 @@ async function handlePluginMarkDelivered(req, res) {
     }
 
     // 1) buscar la pending
-    console.log('🔍 [PLUGIN mark-delivered] Buscando pending_delivery...');
     const { data: pending, error: pendingError } = await supabaseAdmin
       .from('pending_deliveries')
-      .select('id, sale_id, product_name, status')
+      .select('id')
       .eq('server_key', server_key)
       .eq('sale_id', sale_id)
       .maybeSingle();
 
     if (pendingError) {
-      console.error('❌ [PLUGIN mark-delivered] Error buscando:', pendingError);
+      console.error('[PLUGIN mark-delivered] error buscando pending_deliveries:', pendingError);
     }
 
     if (pending) {
-      console.log(`✅ [PLUGIN mark-delivered] Encontrada: ${pending.product_name} (${pending.sale_id})`);
-      
-      const { error: updateError } = await supabaseAdmin
+      await supabaseAdmin
         .from('pending_deliveries')
         .update({
           status: success ? 'completed' : 'failed',
@@ -113,57 +101,22 @@ async function handlePluginMarkDelivered(req, res) {
           error_message: success ? null : (error_message || 'plugin reported failure')
         })
         .eq('id', pending.id);
-      
-      if (updateError) {
-        console.error('❌ [PLUGIN mark-delivered] Error actualizando pending:', updateError);
-      } else {
-        console.log(`✅ [PLUGIN mark-delivered] Pending actualizada a: ${success ? 'completed' : 'failed'}`);
-      }
-    } else {
-      console.log('⚠️  [PLUGIN mark-delivered] NO se encontró pending_delivery con esos datos');
-      console.log('🔍 [PLUGIN mark-delivered] Buscando todas las pending con ese sale_id...');
-      
-      const { data: allPending } = await supabaseAdmin
-        .from('pending_deliveries')
-        .select('id, sale_id, server_key, status')
-        .eq('sale_id', sale_id);
-      
-      if (allPending && allPending.length > 0) {
-        console.log('📋 [PLUGIN mark-delivered] Encontradas:', allPending.map(p => ({
-          sale_id: p.sale_id,
-          server_key_match: p.server_key === server_key,
-          stored_key: p.server_key ? p.server_key.substring(0, 15) + '...' : 'NULL',
-          status: p.status
-        })));
-      } else {
-        console.log('❌ [PLUGIN mark-delivered] No hay pending_deliveries con ese sale_id');
-      }
     }
 
     // 2) actualizar la venta
-    console.log('🔄 [PLUGIN mark-delivered] Actualizando venta...');
-    const { error: saleError } = await supabaseAdmin
+    await supabaseAdmin
       .from('sales')
       .update({
         delivery_status: success ? 'completed' : 'failed',
         delivery_error: success ? null : (error_message || 'plugin reported failure')
       })
-      .eq('id', sale_id);
-    
-    if (saleError) {
-      console.error('❌ [PLUGIN mark-delivered] Error actualizando venta:', saleError);
-    } else {
-      console.log(`✅ [PLUGIN mark-delivered] Venta actualizada`);
-    }
+      .eq('sale_id', sale_id);
 
-    return res.json({ success: true, found_pending: !!pending });
+    return res.json({ success: true });
   } catch (err) {
-    console.error('❌ [PLUGIN mark-delivered] FATAL:', err);
-    console.error('Stack:', err.stack);
+    console.error('[PLUGIN mark-delivered] fatal:', err);
     return res.status(500).json({ success: false, error: 'internal_error' });
   }
-}
-
 }
 
 // ✅ aceptar las dos rutas y cualquier método (GET/POST)
@@ -1676,110 +1629,6 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
   } catch (error) {
     console.error('❌ Error en simulación de compra:', error);
     res.status(500).json({ error: 'Error en simulación', details: error.message });
-  }
-});
-
-
-// ============================================
-// 🧹 ENDPOINT MANUAL: Limpiar entregas antiguas
-// ============================================
-app.post('/api/admin/cleanup-old-deliveries', async (req, res) => {
-  try {
-    const { days = 1, force = false } = req.body;
-    
-    console.log(`🧹 Limpiando entregas de hace más de ${days} días...`);
-    
-    const cutoffDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-    
-    // Buscar entregas antiguas
-    const { data: oldDeliveries, error: fetchError } = await supabaseAdmin
-      .from('pending_deliveries')
-      .select('*')
-      .lt('created_at', cutoffDate);
-    
-    if (fetchError) {
-      console.error('❌ Error buscando entregas:', fetchError);
-      return res.status(500).json({ error: 'Error buscando entregas', details: fetchError });
-    }
-    
-    console.log(`📦 Encontradas ${oldDeliveries?.length || 0} entregas antiguas`);
-    
-    if (!force) {
-      return res.json({
-        success: true,
-        message: 'Vista previa (usa force:true para ejecutar)',
-        count: oldDeliveries?.length || 0,
-        deliveries: oldDeliveries?.map(d => ({
-          sale_id: d.sale_id,
-          product_name: d.product_name,
-          username: d.username,
-          status: d.status,
-          created_at: d.created_at,
-          attempts: d.attempts
-        }))
-      });
-    }
-    
-    // Eliminar
-    const { error: deleteError } = await supabaseAdmin
-      .from('pending_deliveries')
-      .delete()
-      .lt('created_at', cutoffDate);
-    
-    if (deleteError) {
-      console.error('❌ Error eliminando:', deleteError);
-      return res.status(500).json({ error: 'Error eliminando', details: deleteError });
-    }
-    
-    console.log(`✅ ${oldDeliveries?.length || 0} entregas eliminadas`);
-    
-    res.json({
-      success: true,
-      message: `${oldDeliveries?.length || 0} entregas antiguas eliminadas`,
-      count: oldDeliveries?.length || 0
-    });
-    
-  } catch (error) {
-    console.error('❌ Error en cleanup:', error);
-    res.status(500).json({ error: 'Error en cleanup', details: error.message });
-  }
-});
-
-// ============================================
-// 🔍 ENDPOINT MANUAL: Ver estado de entregas
-// ============================================
-app.get('/api/admin/pending-deliveries-status', async (req, res) => {
-  try {
-    const { data: deliveries, error } = await supabaseAdmin
-      .from('pending_deliveries')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(50);
-    
-    if (error) throw error;
-    
-    const grouped = {
-      pending: deliveries?.filter(d => d.status === 'pending').length || 0,
-      completed: deliveries?.filter(d => d.status === 'completed').length || 0,
-      failed: deliveries?.filter(d => d.status === 'failed').length || 0,
-      total: deliveries?.length || 0,
-      details: deliveries?.map(d => ({
-        sale_id: d.sale_id,
-        product_name: d.product_name,
-        username: d.username,
-        status: d.status,
-        created_at: d.created_at,
-        attempts: d.attempts,
-        server_key: d.server_key,
-        error_message: d.error_message
-      }))
-    };
-    
-    res.json({ success: true, ...grouped });
-    
-  } catch (error) {
-    console.error('❌ Error:', error);
-    res.status(500).json({ error: error.message });
   }
 });
 
