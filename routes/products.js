@@ -130,15 +130,10 @@ router.post('/', async (req, res) => {
     if (isGaming) {
       console.log('🎮 Configurando producto GAMING');
       
-      // ✅ AGREGADO: Guardar server_key y server_id
+      // ✅ AGREGADO: Guardar server_key
       if (req.body.server_key) {
         productData.server_key = req.body.server_key;
         console.log('   ✅ server_key:', req.body.server_key);
-      }
-      
-      if (req.body.server_id) {
-        productData.server_id = req.body.server_id;
-        console.log('   ✅ server_id:', req.body.server_id);
       }
       
       // El frontend envía rconHost, rconPort, rconPassword
@@ -284,3 +279,4 @@ router.delete('/:id', async (req, res) => {
 });
 
 export default router;
+
