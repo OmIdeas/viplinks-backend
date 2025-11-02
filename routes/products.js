@@ -115,7 +115,7 @@ router.post('/', async (req, res) => {
       currency: req.body.currency || 'USD',
       type: category,
       category: category,
-      delivery_method: isGaming ? 'rcon' : 'manual',
+      delivery_method: req.body.delivery_method || (isGaming ? 'rcon' : 'manual'),
       image_url: req.body.image || null,
       status: req.body.status || 'active',
       product_type: req.body.type,
@@ -170,12 +170,27 @@ router.post('/', async (req, res) => {
     if (!isGaming) {
       console.log('📦 Configurando producto GENERAL');
       productData.has_guarantee = req.body.has_guarantee === true;
+      productData.warranty_extra_days = req.body.warranty_extra_days || 0;
+      productData.warranty_note = req.body.warranty_note || null;
       productData.brand_name = req.body.brand_name || null;
       productData.brand_logo = req.body.brand_logo || null;
       productData.background_image = req.body.background_image || null;
       productData.brand_colors = req.body.brand_colors || null;
       
+      // Información de contacto
+      productData.contact_email = req.body.contact_email || false;
+      productData.contact_phone = req.body.contact_phone || false;
+      productData.contact_whatsapp = req.body.contact_whatsapp || false;
+      
       console.log('   ✅ Has guarantee:', productData.has_guarantee);
+      if (productData.has_guarantee) {
+        console.log('   ✅ Warranty days:', productData.warranty_extra_days);
+      }
+      console.log('   ✅ Contact methods:', {
+        email: productData.contact_email,
+        phone: productData.contact_phone,
+        whatsapp: productData.contact_whatsapp
+      });
       if (productData.brand_name) {
         console.log('   ✅ Brand name:', productData.brand_name);
       }
@@ -279,4 +294,3 @@ router.delete('/:id', async (req, res) => {
 });
 
 export default router;
-
