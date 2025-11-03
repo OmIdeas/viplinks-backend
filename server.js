@@ -456,21 +456,40 @@ app.post('/api/auth/login', async (req, res) => {
 app.get('/api/auth/me', async (req, res) => {
   try {
     const sess = getAuthenticatedUser(req);
-    const { data: prof } = await supabaseAdmin
+    
+    // Verificación de existencia del perfil (si esto falla, redirige al login)
+    const { data: prof, error: profileError } = await supabaseAdmin
       .from('profiles')
       .select('id,email,username,full_name,plan,role,created_at')
       .eq('id', sess.profile_id)
       .maybeSingle();
 
+    if (profileError) {
+      console.error(`[AUTH/ME] Error Supabase al buscar perfil ID ${sess.profile_id}:`, profileError);
+      // Lanzamos un error específico para verlo en el log
+      throw new Error(`Profile lookup failed: ${profileError.message}`); 
+    }
+    
+    if (!prof) {
+        console.warn(`[AUTH/ME] Perfil NO encontrado para ID: ${sess.profile_id}`);
+        // Si el perfil no existe, el token es técnicamente válido pero el usuario no.
+        return res.status(401).json({ success: false, error: 'User profile not found or inactive' });
+    }
+
     return res.json({ success: true, user: prof || sess.user });
-  } catch {
-    return res.status(401).json({ success: false, error: 'Invalid token' });
+  } catch (error) {
+    // ⚠️ REGISTRO DETALLADO DEL ERROR ⚠️
+    console.error('❌ [AUTH/ME] Falla de Autenticación o Token:', error.message);
+    
+    // Devolvemos 401 para que el frontend sepa que debe redirigir al login
+    return res.status(401).json({ success: false, error: 'Invalid token or authentication failed', details: error.message });
   }
 });
 
+// app.post('/api/auth/logout', ... no se toca, sigue igual.
 app.post('/api/auth/logout', (_req, res) => {
   return res.json({ success: true, message: 'Logged out successfully' });
-});
+})
 
 // ========================================
 // CAMBIAR CONTRASEÑA
@@ -1702,6 +1721,7 @@ logSupabaseKeys();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
 
 
