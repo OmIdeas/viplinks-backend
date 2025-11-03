@@ -1646,6 +1646,30 @@ app.post('/api/test/simulate-purchase', async (req, res) => {
   }
 });
 
+// =================================================================
+// NUEVA RUTA: Obtener productos que NO son de Gaming o Server
+// =================================================================
+app.get('/api/products/non-gaming', requireAuth, async (req, res) => {
+  try {
+    // Consulta a la tabla 'products', excluyendo los que tienen 'type' en ['gaming', 'server']
+    const { data: products, error } = await supabaseAdmin
+      .from('products')
+      .select('*')
+      .not('type', 'in', ['gaming', 'server']); 
+      
+    if (error) {
+      console.error('Error fetching non-gaming products:', error);
+      return res.status(500).json({ success: false, error: error.message });
+    }
+
+    res.json({ success: true, products });
+
+  } catch (error) {
+    console.error('❌ Error en /api/products/non-gaming:', error);
+    res.status(500).json({ error: 'Error interno del servidor', details: error.message });
+  }
+});
+
 // ===== 404 para rutas de /api que no existen (debe ir al final) =====
 app.use('/api', (req, res) => {
   res.status(404).json({
@@ -1678,6 +1702,7 @@ logSupabaseKeys();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
 
 
