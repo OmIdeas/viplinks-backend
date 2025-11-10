@@ -20,6 +20,10 @@ import productsRoutes from './routes/products.js';
 import webhooksRoutes from './routes/webhooks.js';
 import brandsRoutes from './routes/brands.js';
 import serversRoutes from './routes/servers.js';
+// NEW: Eventos / Shortener / Event-Links
+import eventsRoutes from './routes/events.js';
+import shortenerRoutes from './routes/shortener.js';
+import eventLinksRoutes from './routes/eventLinks.js';
 import { processePendingDeliveries, cleanupOldDeliveries } from './workers/deliveryWorker.js';
 import speakeasy from 'speakeasy';
 import QRCode from 'qrcode';
@@ -58,6 +62,9 @@ app.use('/api/products', productsRoutes);
 app.use('/api/webhooks', webhooksRoutes);
 app.use('/api/brands', brandsRoutes);
 app.use('/api/servers', serversRoutes);
+app.use('/api/events', eventsRoutes);
+app.use('/api/shortener', shortenerRoutes);
+app.use('/api/event-links', eventLinksRoutes);
 
 // =============================
 // mark-delivered para el plugin
@@ -1689,6 +1696,89 @@ app.get('/api/products/non-gaming', requireAuth, async (req, res) => {
   }
 });
 
+// ------------------------------
+// Short link resolvers (EVENTS)
+// ------------------------------
+
+// viplinks.org/e/:path  -> domain = "<host>/e"
+app.get('/e/:path', async (req, res) => {
+  try {
+    const host = (req.get('host') || '').toLowerCase();
+    const path = (req.params.path || '').toLowerCase();
+    const domain = `${host}/e`;
+
+    const { data: s, error } = await supabaseAdmin
+      .from('short_links')
+      .select('id,target_url,utm,clicks,domain,path')
+      .eq('domain', domain)
+      .eq('path', path)
+      .maybeSingle();
+
+    if (error) return res.status(500).send('Error');
+    if (!s)   return res.status(404).send('Not found');
+
+    // sumar click (no bloqueante)
+    supabaseAdmin.from('short_links')
+      .update({ clicks: (s.clicks || 0) + 1 })
+      .eq('id', s.id)
+      .then(() => {});
+
+    // aplicar UTM si corresponde
+    let url = s.target_url;
+    if (s.utm) {
+      const u = new URL(url);
+      for (const k of ['source','medium','campaign','term','content']) {
+        const v = s.utm?.[k];
+        if (v) u.searchParams.set(`utm_${k}`, v);
+      }
+      url = u.toString();
+    }
+    return res.redirect(302, url);
+  } catch {
+    return res.status(500).send('Error');
+  }
+});
+
+// vl.ink/:path  -> sólo si el host es vl.ink (no colisiona con /api ni /e)
+app.get('/:path', async (req, res, next) => {
+  if (req.path === '/' || req.path.startsWith('/api') || req.path.startsWith('/e/')) return next();
+
+  const host = (req.get('host') || '').toLowerCase();
+  if (host !== 'vl.ink') return next();
+
+  try {
+    const path = (req.params.path || '').toLowerCase();
+
+    const { data: s, error } = await supabaseAdmin
+      .from('short_links')
+      .select('id,target_url,utm,clicks,domain,path')
+      .eq('domain', 'vl.ink')
+      .eq('path', path)
+      .maybeSingle();
+
+    if (error) return res.status(500).send('Error');
+    if (!s)   return res.status(404).send('Not found');
+
+    supabaseAdmin.from('short_links')
+      .update({ clicks: (s.clicks || 0) + 1 })
+      .eq('id', s.id)
+      .then(() => {});
+
+    let url = s.target_url;
+    if (s.utm) {
+      const u = new URL(url);
+      for (const k of ['source','medium','campaign','term','content']) {
+        const v = s.utm?.[k];
+        if (v) u.searchParams.set(`utm_${k}`, v);
+      }
+      url = u.toString();
+    }
+    return res.redirect(302, url);
+  } catch {
+    return res.status(500).send('Error');
+  }
+});
+
 // ===== 404 para rutas de /api que no existen (debe ir al final) =====
 app.use('/api', (req, res) => {
   res.status(404).json({
@@ -1721,9 +1811,4 @@ logSupabaseKeys();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
-
-
-
-
-
 
