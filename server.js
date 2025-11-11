@@ -47,7 +47,7 @@ app.use(cors({
   ],
   credentials: true
 }));
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '25mb' }));
 
 // Healthchecks
 app.get('/health', (_req, res) =>
@@ -795,30 +795,32 @@ app.post('/api/payment-methods', async (req, res) => {
 // ------------------------------
 app.post('/api/upload-image', async (req, res) => {
   try {
-    const { file, fileName } = req.body;
+    const { file, fileName, folder = 'events' } = req.body;
 
-    if (!file || !fileName) {
-      return res.status(400).json({ success: false, error: 'Missing file or fileName' });
-    }
+    if (!file) return res.status(400).json({ success: false, error: 'Missing file (base64)' });
 
+    // --- Auth JWT ---
     const token = req.headers.authorization?.replace('Bearer ', '');
-    if (!token) {
-      return res.status(401).json({ success: false, error: 'Unauthorized' });
-    }
+    if (!token) return res.status(401).json({ success: false, error: 'Unauthorized' });
+    try { jwt.verify(token, JWT_SECRET); } catch { return res.status(401).json({ success: false, error: 'Invalid token' }); }
 
-    try {
-      jwt.verify(token, JWT_SECRET);
-    } catch {
-      return res.status(401).json({ success: false, error: 'Invalid token' });
-    }
-
-    const base64Data = file.replace(/^data:image\/\w+;base64,/, '');
+    // --- Detectar MIME desde el dataURL ---
+    const m = /^data:(image\/[a-zA-Z0-9.+-]+);base64,/.exec(file);
+    const mime = m ? m[1] : 'image/jpeg';
+    const base64Data = file.replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, '');
     const buffer = Buffer.from(base64Data, 'base64');
 
+    // --- Extensión & nombre seguro ---
+    const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg';
+    const rawName = (fileName || `img_${Date.now()}.${ext}`).toLowerCase();
+    const safeName = rawName.replace(/[^a-z0-9._-]+/g, '-').replace(/\.+/g, '.');
+    const path = `${folder}/${Date.now()}_${safeName}`;
+
+    // --- Subir a Supabase Storage (bucket: product-images) ---
     const { data, error } = await supabaseAdmin.storage
-      .from('product-images')
-      .upload(`products/${fileName}`, buffer, {
-        contentType: 'image/jpeg',
+      .from('product-images')     // asegúrate que el bucket exista y sea público
+      .upload(path, buffer, {
+        contentType: mime,
         upsert: true,
         cacheControl: '3600'
       });
@@ -830,17 +832,12 @@ app.post('/api/upload-image', async (req, res) => {
 
     const { data: urlData } = supabaseAdmin.storage
       .from('product-images')
-      .getPublicUrl(`products/${fileName}`);
+      .getPublicUrl(path);
 
-    return res.json({
-      success: true,
-      url: urlData.publicUrl,
-      path: data.path
-    });
-
-  } catch (error) {
-    console.error('Upload error:', error);
-    return res.status(500).json({ success: false, error: error.message });
+    return res.json({ success: true, url: urlData.publicUrl, path });
+  } catch (err) {
+    console.error('Upload error:', err);
+    return res.status(500).json({ success: false, error: err.message || 'Upload failed' });
   }
 });
 
@@ -1811,4 +1808,5 @@ logSupabaseKeys();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
