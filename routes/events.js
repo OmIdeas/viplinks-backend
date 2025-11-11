@@ -1,6 +1,6 @@
 // routes/events.js  (ESM)
 import express from 'express';
-import { supabase } from '../lib/supabase.js';
+import { supabaseAdmin as supabase } from '../supabase.js';
 import auth from '../middlewares/auth.js';
 
 const router = express.Router();
