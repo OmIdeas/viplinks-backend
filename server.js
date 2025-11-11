@@ -791,7 +791,7 @@ app.post('/api/payment-methods', async (req, res) => {
 });
 
 // ------------------------------
-// Upload de imágenes a Supabase Storage
+// Upload de imágenes (hardened) a Supabase Storage
 // ------------------------------
 app.post('/api/upload-image', async (req, res) => {
   try {
@@ -818,7 +818,7 @@ app.post('/api/upload-image', async (req, res) => {
 
     // --- Subir a Supabase Storage (bucket: product-images) ---
     const { data, error } = await supabaseAdmin.storage
-      .from('product-images')     // asegúrate que el bucket exista y sea público
+      .from('product-images') // bucket público
       .upload(path, buffer, {
         contentType: mime,
         upsert: true,
@@ -840,6 +840,7 @@ app.post('/api/upload-image', async (req, res) => {
     return res.status(500).json({ success: false, error: err.message || 'Upload failed' });
   }
 });
+
 
 // ------------------------------
 // RUTAS RCON
@@ -1808,5 +1809,6 @@ logSupabaseKeys();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`VipLinks API + Realtime listening on port ${PORT}`);
 });
+
 
 
