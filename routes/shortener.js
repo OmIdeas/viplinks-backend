@@ -195,10 +195,9 @@ router.get('/l/:slug', async (req, res) => {
     // El path en la BD es solo el slug (sin l/)
     const { data: link, error } = await supabase
       .from('short_links')
-      .select('id, target_url, clicks, is_active, domain, path')
+      .select('id, target_url, clicks, domain, path')
       .eq('domain', 'viplinks.org')
       .eq('path', slug)  // Buscar solo el slug
-      .eq('is_active', true)
       .maybeSingle();
     
     // Si hay error en la consulta
