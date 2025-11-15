@@ -180,4 +180,213 @@ router.post('/update', auth, async (req, res) => {
   return router.handle({ ...req, method: 'PATCH', url: `/${id}` }, res);
 });
 
+/* ========================================================================== */
+/* RUTA PÚBLICA: Redirección de short links                                  */
+/* Ejemplo: GET /l/abc123 → redirige al target_url                          */
+/* ========================================================================== */
+
+router.get('/l/:slug', async (req, res) => {
+  try {
+    const { slug } = req.params;
+    
+    console.log(`[REDIRECT] Intentando redirigir: /l/${slug}`);
+    
+    // Buscar el short link en Supabase
+    // IMPORTANTE: El path en la BD es "l/slug", no solo "slug"
+    const { data: link, error } = await supabase
+      .from('short_links')
+      .select('id, target_url, clicks, is_active, domain, path')
+      .eq('domain', 'viplinks.org')
+      .eq('path', `l/${slug}`)  // Buscar "l/slug"
+      .eq('is_active', true)
+      .maybeSingle();
+    
+    // Si hay error en la consulta
+    if (error) {
+      console.error('[REDIRECT] Error en consulta:', error);
+      return res.status(500).send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Error - VipLinks</title>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { 
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+              display: flex; 
+              justify-content: center; 
+              align-items: center; 
+              height: 100vh; 
+              margin: 0;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            }
+            .container {
+              background: white;
+              padding: 40px;
+              border-radius: 20px;
+              text-align: center;
+              box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+              max-width: 400px;
+            }
+            h1 { color: #ef4444; margin-bottom: 20px; font-size: 1.5rem; }
+            p { color: #666; margin-bottom: 30px; line-height: 1.6; }
+            a { 
+              display: inline-block;
+              padding: 12px 24px;
+              background: #667eea;
+              color: white;
+              text-decoration: none;
+              border-radius: 8px;
+              transition: all 0.3s;
+            }
+            a:hover {
+              background: #5568d3;
+              transform: translateY(-2px);
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h1>❌ Error del servidor</h1>
+            <p>Ocurrió un error al procesar tu solicitud. Por favor, intenta nuevamente.</p>
+            <a href="https://viplinks.org">Ir a VipLinks</a>
+          </div>
+        </body>
+        </html>
+      `);
+    }
+    
+    // Si no se encuentra el link
+    if (!link) {
+      console.log(`[REDIRECT] Short link no encontrado: l/${slug}`);
+      return res.status(404).send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Link no encontrado - VipLinks</title>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { 
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+              display: flex; 
+              justify-content: center; 
+              align-items: center; 
+              height: 100vh; 
+              margin: 0;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            }
+            .container {
+              background: white;
+              padding: 40px;
+              border-radius: 20px;
+              text-align: center;
+              box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+              max-width: 400px;
+            }
+            h1 { color: #667eea; margin-bottom: 20px; font-size: 1.5rem; }
+            p { color: #666; margin-bottom: 30px; line-height: 1.6; }
+            a { 
+              display: inline-block;
+              padding: 12px 24px;
+              background: #667eea;
+              color: white;
+              text-decoration: none;
+              border-radius: 8px;
+              transition: all 0.3s;
+            }
+            a:hover {
+              background: #5568d3;
+              transform: translateY(-2px);
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h1>🔗 Link no encontrado</h1>
+            <p>El link que intentas acceder no existe o ha expirado. Verifica la URL e intenta nuevamente.</p>
+            <a href="https://viplinks.org">Ir a VipLinks</a>
+          </div>
+        </body>
+        </html>
+      `);
+    }
+    
+    // Incrementar contador de clicks (async, no espera respuesta)
+    supabase
+      .from('short_links')
+      .update({ 
+        clicks: (link.clicks || 0) + 1,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', link.id)
+      .then(({ error: updateError }) => {
+        if (updateError) {
+          console.error('[REDIRECT] Error incrementando clicks:', updateError);
+        }
+      });
+    
+    console.log(`[REDIRECT] ✅ Redirigiendo /l/${slug} → ${link.target_url}`);
+    
+    // Redirigir (301 = permanente, 302 = temporal)
+    // Usar 301 para mejor SEO y caché
+    res.redirect(301, link.target_url);
+    
+  } catch (error) {
+    console.error('[REDIRECT] Excepción no manejada:', error);
+    res.status(500).send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Error - VipLinks</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            height: 100vh; 
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          }
+          .container {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 400px;
+          }
+          h1 { color: #ef4444; margin-bottom: 20px; font-size: 1.5rem; }
+          p { color: #666; margin-bottom: 30px; line-height: 1.6; }
+          a { 
+            display: inline-block;
+            padding: 12px 24px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            transition: all 0.3s;
+          }
+          a:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>❌ Error del servidor</h1>
+          <p>Ocurrió un error inesperado. Por favor, intenta nuevamente más tarde.</p>
+          <a href="https://viplinks.org">Ir a VipLinks</a>
+        </div>
+      </body>
+      </html>
+    `);
+  }
+});
+
 export default router;
