@@ -75,7 +75,7 @@ router.post('/', auth, async (req, res) => {
       .select('*')
       .single();
     if (error) return res.status(400).json({ error: error.message });
-    return res.json({ ...data, short_url: `${data.domain}/${data.path}` });
+    return res.json({ ...data, short_url: `${data.domain}/l/${data.path}` });
   }
 
   // Crear
@@ -96,7 +96,7 @@ router.post('/', auth, async (req, res) => {
     .single();
 
   if (error) return res.status(400).json({ error: error.message });
-  res.json({ ...data, short_url: `${data.domain}/${data.path}` });
+  res.json({ ...data, short_url: `${data.domain}/l/${data.path}` });
 });
 
 /* ---------- PATCH /api/shortener/:id (editar) ----------
@@ -148,7 +148,7 @@ router.patch('/:id', auth, async (req, res) => {
     .single();
 
   if (error) return res.status(400).json({ error: error.message });
-  res.json({ ...data, short_url: `${data.domain}/${data.path}` });
+  res.json({ ...data, short_url: `${data.domain}/l/${data.path}` });
 });
 
 /* ---------- DELETE /api/shortener/:id ---------- */
