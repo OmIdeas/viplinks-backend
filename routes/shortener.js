@@ -192,12 +192,12 @@ router.get('/l/:slug', async (req, res) => {
     console.log(`[REDIRECT] Intentando redirigir: /l/${slug}`);
     
     // Buscar el short link en Supabase
-    // IMPORTANTE: El path en la BD es "l/slug", no solo "slug"
+    // El path en la BD es solo el slug (sin l/)
     const { data: link, error } = await supabase
       .from('short_links')
       .select('id, target_url, clicks, is_active, domain, path')
       .eq('domain', 'viplinks.org')
-      .eq('path', `l/${slug}`)  // Buscar "l/slug"
+      .eq('path', slug)  // Buscar solo el slug
       .eq('is_active', true)
       .maybeSingle();
     
@@ -259,7 +259,7 @@ router.get('/l/:slug', async (req, res) => {
     
     // Si no se encuentra el link
     if (!link) {
-      console.log(`[REDIRECT] Short link no encontrado: l/${slug}`);
+      console.log(`[REDIRECT] Short link no encontrado: ${slug}`);
       return res.status(404).send(`
         <!DOCTYPE html>
         <html>
